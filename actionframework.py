@@ -1,23 +1,19 @@
-from pybricks.parameters import Port, Color
-from pybricks.tools import wait, StopWatch
+"""
+RobotActionFramework for Pybricks MicroPython
+Supports SPIKE Prime utilizing EV3 codebase
+Built by itonasd
+"""
+
+from pybricks.parameters import Color
+from pybricks.tools import StopWatch
 from typing import Callable
-from pybricks.ev3devices import (Motor, ColorSensor, GyroSensor)
-
-def measureMotorPotential(port: Port, duty_cycle: int):
-    motor = Motor(port)
-    motor.dc(duty_cycle)
-    wait(3000)
-
-    speed = motor.speed()
-    motor.stop()
-
-    return speed
-
-# ---------------------- Legacy EV3 Code ---------------------- #
+from pybricks.hubs import PrimeHub
+from pybricks.pupdevices import Motor, ColorSensor
 
 CENTER = 0
 LEFT = 1 
 RIGHT = 2
+
 
 def clamp(val, min_val=-1.0, max_val=1.0): return max(min(val, max_val), min_val)
 
@@ -49,23 +45,20 @@ class PIDController:
 
         return (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
 
-class CKKRobotics:
+class ActionFramework:
     def __init__(
-        self, left_motor: Motor, right_motor: Motor, 
-        left_color: ColorSensor, right_color: ColorSensor,
-        gyro: GyroSensor, forward_params: dict[int, list[int]],
-        linetrace_params: dict[int, list[int]], turn_params: dict[int, list[int]]
+        self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
+        forward_params: dict[int, list[int]], linetrace_params: dict[int, list[int]], turn_params: dict[int, list[int]]
     ):
         self.target_heading = 0
         self.controller = PIDController()
+        self.hub = hub
         self.forward_params = forward_params
         self.linetrace_params = linetrace_params
         self.turn_params = turn_params
         self.left_motor = left_motor
         self.right_motor = right_motor
-        self.left_color = left_color
-        self.right_color = right_color
-        self.gyro = gyro
+        self.color_sensor = color_sensor
         self.concurrent_queue = []
 
     def nearest_tier(self, s: int, params: dict) -> int:
@@ -76,25 +69,28 @@ class CKKRobotics:
         self.left_motor.reset_angle(0)
         self.right_motor.reset_angle(0)
 
-    def reset_gyro(self) -> None:
+    def reset_imu(self) -> None:
         self.target_heading = 0
-        self.gyro.reset_angle(0)
+        self.hub.imu.reset_heading(0)  
 
-    def run_async(self, condition: Callable[[], bool], action: Callable[[], None] = None, destroying: Callable[[], None] = None) -> None:
+    def run_async(self, condition: Callable[[], bool], action: Callable[[], None] | None = None, destroying: Callable[[], None] | None = None) -> None:
         self.concurrent_queue.append([condition, action, destroying])
 
-    def run(self, condition: Callable[[], bool], action: Callable[[], None]) -> None:
+    def run(self, condition: Callable[[], bool], action: Callable[[], None], destroying: Callable[[], None] | None = None) -> None:
         while not condition():
             action()
             for i in range(len(self.concurrent_queue) - 1, -1, -1):
                 if not self.concurrent_queue[i][0]():
-                    if self.concurrent_queue[i][1]: self.concurrent_queue[i][1]()
+                    if callable(self.concurrent_queue[i][1]): self.concurrent_queue[i][1]()
                 else:
-                    if self.concurrent_queue[i][2]: self.concurrent_queue[i][2]()
+                    if callable(self.concurrent_queue[i][2]): self.concurrent_queue[i][2]()
                     self.concurrent_queue.pop(i)
 
-        self.left_motor.stop()
-        self.right_motor.stop()
+        if callable(destroying):
+            destroying()
+        else:
+            self.left_motor.stop()
+            self.right_motor.stop()
 
     def brake(self) -> Callable[[], None]:
         def callback() -> None:
@@ -108,6 +104,12 @@ class CKKRobotics:
             self.right_motor.hold()
         return callback
     
+    def stop(self) -> Callable[[], None]:
+        def callback() -> None:
+            self.left_motor.stop()
+            self.right_motor.stop()
+        return callback
+
     def accelerate(self, speed: int, ramp_degree: int) -> Callable[[], int]:
         started = False
         start_degree = 0
@@ -149,39 +151,28 @@ class CKKRobotics:
             s = speed() if callable(speed) else speed
             self.controller.setPID(self.forward_params[self.nearest_tier(s, self.forward_params)])
 
-            rotation = self.controller.calculate(self.target_heading, self.gyro.angle())
+            rotation = self.controller.calculate(self.target_heading, self.hub.imu.heading())
             self.left_motor.dc(int(clamp(s + rotation, -100, 100)))
             self.right_motor.dc(int(clamp(s - rotation, -100, 100)))
         return callback
-    
-    def linetrace_both(self, speed: Callable[[], int] | int) -> Callable[[], None]:
+
+    def linetrace(self, speed: Callable[[], int] | int, fixedReflection: int) -> Callable[[], None]:
         def callback() -> None:
             s = speed() if callable(speed) else speed
             self.controller.setPID(self.linetrace_params[self.nearest_tier(s, self.linetrace_params)])
 
-            rotation = self.controller.calculate(self.left_color.reflection(), self.right_color.reflection())
+            rotation = self.controller.calculate(self.color_sensor.reflection(), fixedReflection)
             self.left_motor.dc(int(clamp(s + rotation, -100, 100)))
             self.right_motor.dc(int(clamp(s - rotation, -100, 100)))
         return callback
 
-    def linetrace_single(self, colorSensor: int, speed: Callable[[], int] | int, fixedReflection: int) -> Callable[[], None]:
-        sensor = self.left_color if colorSensor == LEFT else self.right_color
-        def callback() -> None:
-            s = speed() if callable(speed) else speed
-            self.controller.setPID(self.linetrace_params[self.nearest_tier(s, self.linetrace_params)])
-
-            rotation = self.controller.calculate(sensor.reflection(), fixedReflection)
-            self.left_motor.dc(int(clamp(s + rotation, -100, 100)))
-            self.right_motor.dc(int(clamp(s - rotation, -100, 100)))
-        return callback
-
-    def rotate(self, pivot: int = CENTER) -> Callable[[], None]:
+    def turn(self, pivot: int = CENTER) -> Callable[[], None]:
         power = [0 if pivot == LEFT else 1, 0 if pivot == RIGHT else 1]
         started = False
         def callback() -> None:
             nonlocal started
             if not started:
-                turn_angle = abs(self.target_heading - self.gyro.angle()) - 10
+                turn_angle = abs(self.target_heading - self.hub.imu.heading()) - 10
                 self.controller.reset()
                 selected = [1, 0.2, 0.1]
                 for i in sorted(self.turn_params):
@@ -190,7 +181,7 @@ class CKKRobotics:
                 self.controller.setPID(selected)
                 started = True
                 
-            rotation = self.controller.calculate(self.target_heading, self.gyro.angle())
+            rotation = self.controller.calculate(self.target_heading, self.hub.imu.heading())
             self.left_motor.dc(int(clamp(rotation, -100, 100) * power[0]))
             self.right_motor.dc(int(clamp(-rotation, -100, 100) * power[1]))
         return callback
@@ -207,7 +198,7 @@ class CKKRobotics:
                 self.target_heading = target
                 started = True
 
-            if abs(self.target_heading - self.gyro.angle()) <= tolerance: n += 1
+            if abs(self.target_heading - self.hub.imu.heading()) <= tolerance: n += 1
             else: n = 0
             return n >= stable
         return callback
@@ -225,17 +216,14 @@ class CKKRobotics:
             
         return callback
     
-    def black_reflection(self, colorSensor: int, threshold: int) -> Callable[[], bool]:
-        sensor = self.left_color if colorSensor == LEFT else self.right_color
-        return lambda: sensor.reflection() <= threshold
+    def black_reflection(self, threshold: int) -> Callable[[], bool]:
+        return lambda: self.color_sensor.reflection() <= threshold
     
-    def white_reflection(self, colorSensor: int, threshold: int) -> Callable[[], bool]:
-        sensor = self.left_color if colorSensor == LEFT else self.right_color
-        return lambda: sensor.reflection() >= threshold
+    def white_reflection(self, threshold: int) -> Callable[[], bool]:
+        return lambda: self.color_sensor.reflection() >= threshold
     
-    def color_reflection(self, colorSensor: int, color: Color) -> Callable[[], bool]:
-        sensor = self.left_color if colorSensor == LEFT else self.right_color
-        return lambda: sensor.color() == color
+    def color_reflection(self, color: Color) -> Callable[[], bool]:
+        return lambda: self.color_sensor.color() == color
 
     def any(self, *conditions: Callable[[], bool]) -> Callable[[], bool]:
         return lambda: any(c() for c in conditions)
