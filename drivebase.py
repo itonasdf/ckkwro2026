@@ -9,18 +9,13 @@ from pybricks.tools import StopWatch
 from pybricks.hubs import PrimeHub
 from pybricks.pupdevices import Motor, ColorSensor
 from micropython import const
-from typing import Callable, TypeAlias
 from math import pi
 
-condition_t: TypeAlias = Callable[[], bool]
-task_t: TypeAlias = Callable[[], None]
-pidparams_t: TypeAlias = dict[int, tuple[float, float, float]]
-
-LEFT = const(1)
-RIGHT = const(2)
+PIVOT_LEFT = const(1)
+PIVOT_RIGHT = const(2)
 
 def clamp(val, min_val: float = -1.0, max_val: float = 1.0): return max(min(val, max_val), min_val)
-def nearest_hash(s: int, params: pidparams_t) -> int: return min(params.keys(), key=lambda t: abs(t - s))
+def nearest_hash(s: int, params: dict[int]) -> int: return min(params.keys(), key=lambda t: abs(t - s))
 
 class PIDController:
     def __init__(self):
@@ -53,17 +48,17 @@ class PIDController:
 
 class MissionMotor:
     def __init__(self, motor: Motor): self.motor = motor
-    def move(self, speed: int) -> task_t: return lambda: self.motor.dc(speed)
-    def stop(self) -> task_t: return lambda: self.motor.stop()
-    def brake(self) -> task_t: return lambda: self.motor.brake()
-    def hold(self) -> task_t: return lambda: self.motor.hold()
-    def degree(self, target: int) -> condition_t: return lambda: abs(self.motor.angle()) >= target
-    def reset_encoder(self) -> None: self.motor.reset_angle(0)
+    def move(self, speed: int): return lambda: self.motor.dc(speed)
+    def stop(self): return lambda: self.motor.stop()
+    def brake(self): return lambda: self.motor.brake()
+    def hold(self): return lambda: self.motor.hold()
+    def degree(self, target: int): return lambda: abs(self.motor.angle()) >= target
+    def resetEncoder(self) -> None: self.motor.reset_angle(0)
 
 class DriveBaseFramework:
     def __init__(
         self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
-        forward_params: pidparams_t, linetrace_params: pidparams_t, turn_params: pidparams_t, wheel_diameter: int
+        forward_params, linetrace_params, turn_params, wheel_diameter: int
     ):
         self.target_heading = 0
         self.controller = PIDController()
@@ -77,50 +72,50 @@ class DriveBaseFramework:
         self.mm2deg = 360 / (pi * wheel_diameter)
         self.concurrent_queue = []
 
-    def reset_encoder(self) -> None:
+    def resetEnconder(self) -> None:
         self.controller.reset()
         self.left_motor.reset_angle(0)
         self.right_motor.reset_angle(0)
 
-    def reset_imu(self) -> None:
+    def resetImu(self) -> None:
         self.target_heading = 0
         self.hub.imu.reset_heading(0)
 
-    def run_async(self, condition: condition_t, task: task_t | None = None, destroying: task_t | None = None) -> None:
+    def runAsync(self, condition, task = None, destroying = None) -> None:
         self.concurrent_queue.append([condition, task, destroying])
 
-    def run(self, condition: condition_t, task: task_t, destroying: task_t | None = None) -> None:
+    def run(self, condition, task, destroying = None) -> None:
         while not condition():
             task()
             for i in range(len(self.concurrent_queue) - 1, -1, -1):
                 if not self.concurrent_queue[i][0]():
                     if callable(self.concurrent_queue[i][1]): self.concurrent_queue[i][1]()
-                else:
+                else: 
                     if callable(self.concurrent_queue[i][2]): self.concurrent_queue[i][2]()
                     self.concurrent_queue.pop(i)
 
         if callable(destroying): destroying()
         else: self.stop()()
 
-    def brake(self) -> task_t:
+    def brake(self):
         def callback() -> None:
             self.left_motor.brake()
             self.right_motor.brake()
         return callback
     
-    def hold(self) -> task_t:
+    def hold(self):
         def callback() -> None:
             self.left_motor.hold()
             self.right_motor.hold()
         return callback
     
-    def stop(self) -> task_t:
+    def stop(self):
         def callback() -> None:
             self.left_motor.stop()
             self.right_motor.stop()
         return callback
 
-    def move_raw(self, left_speed: int, right_speed: int) -> task_t:
+    def moveRaw(self, left_speed: int, right_speed: int):
         left_speed = clamp(left_speed, -100.0, 100.0)
         right_speed = clamp(right_speed, -100.0, 100.0)
         def callback() -> None:
@@ -128,7 +123,7 @@ class DriveBaseFramework:
             self.right_motor.dc(float(right_speed))
         return callback
 
-    def move_imu(self, speed: int) -> task_t:
+    def moveImu(self, speed: int):
         started = False
         speed = clamp(speed, -100.0, 100.0)
         def callback() -> None:
@@ -149,7 +144,7 @@ class DriveBaseFramework:
             self.right_motor.dc(float(right))
         return callback
 
-    def linetrace(self, speed: int, reflection: int) -> task_t:
+    def linetrace(self, speed: int, reflection: int):
         started = False
         speed = clamp(speed, -100.0, 100.0)
         def callback() -> None:
@@ -170,8 +165,8 @@ class DriveBaseFramework:
             self.right_motor.dc(float(right))
         return callback
 
-    def turn(self, pivot: int = 0) -> task_t:
-        power = [0 if pivot == LEFT else 1, 0 if pivot == RIGHT else 1]
+    def turn(self, pivot: int = 0):
+        power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
         started = False
         def callback() -> None:
             nonlocal started
@@ -186,13 +181,13 @@ class DriveBaseFramework:
             self.right_motor.dc(float(clamp(-rotation, -100, 100) * power[1]))
         return callback
     
-    def degree(self, target: int) -> condition_t:
+    def degree(self, target: int):
         return lambda: (abs(self.left_motor.angle()) + abs(self.right_motor.angle())) / 2 >= target
 
-    def mm(self, target: int) -> condition_t:
+    def mm(self, target: int):
         return self.degree(self.mm2deg * target)
 
-    def angle(self, target: int, tolerance: float = 1.0, stable: int = 10) -> condition_t:
+    def angle(self, target: int, tolerance: float = 1.0, stable: int = 10):
         n = 0
         started = False
         def callback() -> bool:
@@ -206,17 +201,17 @@ class DriveBaseFramework:
             return n >= stable
         return callback
     
-    def black_reflection(self, threshold: int) -> condition_t:
+    def blackReflection(self, threshold: int):
         return lambda: self.color_sensor.reflection() <= threshold
     
-    def white_reflection(self, threshold: int) -> condition_t:
+    def whiteReflection(self, threshold: int):
         return lambda: self.color_sensor.reflection() >= threshold
     
-    def color_reflection(self, color: Color) -> condition_t:
+    def colorReflection(self, color: Color):
         return lambda: self.color_sensor.color() == color
     
     @staticmethod
-    def timer(target: int) -> condition_t:
+    def timer(target: int):
         timer = StopWatch()
         started = False
         def callback() -> bool:
@@ -228,13 +223,13 @@ class DriveBaseFramework:
         return callback
     
     @staticmethod
-    def forever() -> condition_t:
+    def forever():
         return lambda: False
 
     @staticmethod
-    def any(*conditions: condition_t) -> condition_t:
+    def any(*conditions):
         return lambda: any(c() for c in conditions)
 
     @staticmethod
-    def all(*conditions: condition_t) -> condition_t:
+    def all(*conditions):
         return lambda: all(c() for c in conditions)
