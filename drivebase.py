@@ -51,7 +51,7 @@ class PIDController:
 
         return (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
 
-class ConcurrentTask:
+class Task:
     __slots__ = ("series", "index")
     
     def __init__(self, series):
@@ -61,6 +61,12 @@ class ConcurrentTask:
     def update(self) -> bool:
         if self.index >= len(self.series): return True
         step = self.series[self.index]
+        
+        if callable(step):
+            step()
+            self.index += 1
+            return False
+        
         until = step[0]
         task = step[1] if len(step) > 1 else None
         cleanup = step[2] if len(step) > 2 else None
@@ -99,34 +105,37 @@ class DriveBaseFramework:
         self.color_sensor = color_sensor
         self.mm2deg = 360 / (pi * wheel_diameter)
         self.dt = 1 / operate_frequency
+        self.throttle = int(1000 / operate_frequency)
         self.controller.dt = self.dt
-        self.concurrent_queue: list[ConcurrentTask] = []
-
-    def resetEnconder(self) -> None:
-        self.controller.reset()
-        self.left_motor.reset_angle(0)
-        self.right_motor.reset_angle(0)
+        self.concurrent_queue: list[Task] = []
 
     def getEncoder(self) -> int:
         return (abs(self.left_motor.angle()) + abs(self.right_motor.angle())) / 2
 
-    def resetImu(self) -> None:
-        self.target_heading = 0
-        self.hub.imu.reset_heading(0)
+    def runConcurrent(self, *series) -> None:
+        self.concurrent_queue.append(Task(series))
 
-    def runConcurrent(self, series) -> None:
-        self.concurrent_queue.append(ConcurrentTask(series))
-
-    def run(self, until, task = None, cleanup = None) -> None:
-        while not until():
-            for i in range(len(self.concurrent_queue) - 1, -1, -1):
-                if (self.concurrent_queue[i].update()): self.concurrent_queue.pop(i)
- 
-            if callable(task): task()
-            wait(self.dt)
-        if callable(cleanup): cleanup()
-        else: self.stop()()
+    def run(self, *series):
+        task = Task(series)
+        while True:
+            for i in range(len(self.concurrent_queue)-1, -1, -1):
+                if self.concurrent_queue[i].update(): self.concurrent_queue.pop(i)
+            if task.update(): break
+            wait(self.throttle)
     
+    def resetEnconder(self) -> None:
+        def callback() -> None:
+            self.controller.reset()
+            self.left_motor.reset_angle(0)
+            self.right_motor.reset_angle(0)
+        return callback
+
+    def resetImu(self):
+        def callback() -> None:
+            self.target_heading = 0
+            self.hub.imu.reset_heading(0)
+        return callback
+
     def brake(self):
         def callback() -> None:
             self.left_motor.brake()
