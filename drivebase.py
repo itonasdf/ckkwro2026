@@ -52,25 +52,24 @@ class PIDController:
         return (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
 
 class ConcurrentTask:
-    __slots__ = (
-        "wait", "until", "task", "cleanup", "started"
-    )
+    __slots__ = ("series", "index")
     
-    def __init__(self, wait, until, task, cleanup):
-        self.wait = wait
-        self.until = until
-        self.task = task
-        self.cleanup = cleanup
-        self.started = False
+    def __init__(self, series):
+        self.series = series
+        self.index = 0
 
     def update(self) -> bool:
-        if not self.started: self.started = self.wait()
-        if not self.started: return False
-        if self.until():
-            if callable(self.cleanup): self.cleanup()
-            return True
+        if self.index >= len(self.series): return True
+        step = self.series[self.index]
+        until = step[0]
+        task = step[1] if len(step) > 1 else None
+        cleanup = step[2] if len(step) > 2 else None
 
-        self.task()
+        if until():
+            if callable(cleanup): cleanup()
+            self.index += 1
+        else:
+            if callable(task): task()
         return False
 
 class MissionMotor:
@@ -115,15 +114,15 @@ class DriveBaseFramework:
         self.target_heading = 0
         self.hub.imu.reset_heading(0)
 
-    def runConcurrent(self, wait, until, task, cleanup = None) -> None:
-        self.concurrent_queue.append(ConcurrentTask(wait, until, task, cleanup))
+    def runConcurrent(self, series) -> None:
+        self.concurrent_queue.append(ConcurrentTask(series))
 
-    def run(self, until, task, cleanup = None) -> None:
+    def run(self, until, task = None, cleanup = None) -> None:
         while not until():
             for i in range(len(self.concurrent_queue) - 1, -1, -1):
                 if (self.concurrent_queue[i].update()): self.concurrent_queue.pop(i)
-
-            task()
+ 
+            if callable(task): task()
             wait(self.dt)
         if callable(cleanup): cleanup()
         else: self.stop()()
