@@ -27,7 +27,7 @@ class PIDController:
         self.kp = 1
         self.ki = 0
         self.kd = 0.1
-        self.integral_limit = 10
+        self.integral_limit = 1
         self.integral_deadzone = 10
         self.dt = 0.01
         self.integral = 0.0
@@ -61,7 +61,7 @@ class Task:
     def update(self) -> bool:
         if self.index >= len(self.series): return True
         step = self.series[self.index]
-        
+
         if callable(step):
             step()
             self.index += 1
@@ -70,7 +70,6 @@ class Task:
         until = step[0]
         task = step[1] if len(step) > 1 else None
         cleanup = step[2] if len(step) > 2 else None
-
         if until():
             if callable(cleanup): cleanup()
             self.index += 1
@@ -87,7 +86,7 @@ class MissionMotor:
     def brake(self): return lambda: self.motor.brake()
     def hold(self): return lambda: self.motor.hold()
     def degree(self, target: int): return lambda: abs(self.motor.angle()) >= target
-    def resetEncoder(self) -> None: self.motor.reset_angle(0)
+    def resetEncoder(self): return lambda: self.motor.reset_angle(0)
 
 class DriveBaseFramework:
     def __init__(
@@ -109,7 +108,7 @@ class DriveBaseFramework:
         self.controller.dt = self.dt
         self.concurrent_queue: list[Task] = []
 
-    def getEncoder(self) -> int:
+    def getEncoder(self) -> float:
         return (abs(self.left_motor.angle()) + abs(self.right_motor.angle())) / 2
 
     def runConcurrent(self, *series) -> None:
@@ -174,11 +173,7 @@ class DriveBaseFramework:
             rotation = self.controller.calculate(self.target_heading, self.hub.imu.heading())
             left = speed + rotation
             right = speed - rotation
-            maximum = max(abs(left), abs(right))
-            if maximum > 100:
-                left *= 100 / maximum
-                right *= 100 / maximum
-            
+
             self.left_motor.dc(float(left))
             self.right_motor.dc(float(right))
         return callback
@@ -195,18 +190,20 @@ class DriveBaseFramework:
             rotation = self.controller.calculate(reflection, self.color_sensor.reflection())
             left = speed + rotation
             right = speed - rotation
-            maximum = max(abs(left), abs(right))
-            if maximum > 100:
-                left *= 100 / maximum
-                right *= 100 / maximum
             
             self.left_motor.dc(float(left))
             self.right_motor.dc(float(right))
         return callback
 
-    def turn(self, pivot: int = 0):
+    def turn(self, pivot: int = 0, deadzone: float = 15.0):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
         started = False
+
+        def compensate(x: float) -> float:
+            if x == 0: return 0.0
+            sign = 1 if x > 0 else -1
+            return sign * (deadzone + abs(x) * (100 - deadzone) / 100)
+
         def callback() -> None:
             nonlocal started
             if not started:
@@ -216,8 +213,10 @@ class DriveBaseFramework:
                 started = True
 
             rotation = self.controller.calculate(self.target_heading, self.hub.imu.heading())
-            self.left_motor.dc(float(clamp(rotation, -100, 100) * power[0]))
-            self.right_motor.dc(float(clamp(-rotation, -100, 100) * power[1]))
+            rotation = compensate(rotation)
+
+            self.left_motor.dc(float(rotation * power[0]))
+            self.right_motor.dc(float(-rotation * power[1]))
         return callback
     
     def degree(self, target: int):
