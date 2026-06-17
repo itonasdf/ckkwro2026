@@ -1,5 +1,5 @@
 """
-DriveBaseFramework for Pybricks MicroPython
+DriveBaseAPI for Pybricks MicroPython
 Supports SPIKE Prime utilizing EV3 codebase
 Built by itonasd
 """
@@ -88,7 +88,7 @@ class MissionMotor:
     def degree(self, target: int): return lambda: abs(self.motor.angle()) >= target
     def resetEncoder(self): return lambda: self.motor.reset_angle(0)
 
-class DriveBaseFramework:
+class DriveBaseAPI:
     def __init__(
         self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
         forward_params, linetrace_params, turn_params, wheel_diameter: int, operate_frequency: int
@@ -247,6 +247,9 @@ class DriveBaseFramework:
     
     def colorReflection(self, color: Color):
         return lambda: self.color_sensor.color() == color
+
+    def press(self, button):
+        return lambda: button in self.hub.buttons.pressed()
     
     @staticmethod
     def timer(target: int):
