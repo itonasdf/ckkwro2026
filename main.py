@@ -1,44 +1,46 @@
 """
-Program's Entry Point for WRO2026 Senior
+Main Entry Point for WRO2026 Senior
 """
 
 from pybricks.parameters import Port, Color, Direction
 from pybricks.pupdevices import Motor, ColorSensor
+from pybricks.robotics import DriveBase
 from pybricks.hubs import PrimeHub
+from pybricks.tools import wait
 
 from huskylens import Huskylens, Block, ALGORITHM_COLOR_RECOGNITION
-from drivebase import DriveBaseFramework, MissionMotor, PIVOT_LEFT, PIVOT_RIGHT
+from drivebase import DriveBaseAPI, MissionMotor, PIVOT_LEFT, PIVOT_RIGHT
 
 prime_hub = PrimeHub()
-husky = Huskylens(Port.E)
-m1 = MissionMotor(Motor(Port.C))
-m2 = MissionMotor(Motor(Port.D))
-w = DriveBaseFramework(
-    Motor(Port.A, Direction.CLOCKWISE), 
-    Motor(Port.B, Direction.COUNTERCLOCKWISE), 
+#husky = Huskylens(Port.E)
+#m1 = MissionMotor(Motor(Port.C))
+#m2 = MissionMotor(Motor(Port.D))
+w = DriveBaseAPI(
+    Motor(Port.A, Direction.COUNTERCLOCKWISE), 
+    Motor(Port.B, Direction.CLOCKWISE), 
     ColorSensor(Port.F), 
     hub = prime_hub,
-    wheel_diameter = 0,
+    wheel_diameter = 62.4,
+    operate_frequency = 100,
     forward_params = {
-        10:  (0.0, 0.0, 0.0), -10:  (0.0, 0.0, 0.0),
-        25:  (0.0, 0.0, 0.0), -25:  (0.0, 0.0, 0.0),
-        50:  (0.0, 0.0, 0.0), -50:  (0.0, 0.0, 0.0),
-        75:  (0.0, 0.0, 0.0), -75:  (0.0, 0.0, 0.0),
-        100: (0.0, 0.0, 0.0), -100: (0.0, 0.0, 0.0),
+        30:  (3.0, 6.0, 0.045), -30:  (0.0, 0.0, 0.0),
+        50:  (2.4, 10.0, 0.045), -50:  (0.0, 0.0, 0.0),
+        75:  (2.0, 14.0, 0.045), -75:  (0.0, 0.0, 0.0),
+        100: (3.0, 25.0, 0.045), -100: (0.0, 0.0, 0.0),
     },
     linetrace_params = {
-        10:  (0.0, 0.0, 0.0), -10:  (0.0, 0.0, 0.0),
-        25:  (0.0, 0.0, 0.0), -25:  (0.0, 0.0, 0.0),
+        30:  (0.1, 0.0, 0.01), -30:  (0.0, 0.0, 0.0),
         50:  (0.0, 0.0, 0.0), -50:  (0.0, 0.0, 0.0),
         75:  (0.0, 0.0, 0.0), -75:  (0.0, 0.0, 0.0),
         100: (0.0, 0.0, 0.0), -100: (0.0, 0.0, 0.0),
     },
     turn_params = {
         30:  (0.0, 0.0, 0.0),
-        90:  (0.0, 0.0, 0.0),
+        90:  (3.0, 0.0, 0.1),
         180: (0.0, 0.0, 0.0),
     },
 )
+
 
 def solve_mosaic(tiles: list[Block], ratio_tolerance: int, area_tolerance: int) -> list[list[int]] | None:
     filtered = [tile for tile in tiles if abs(tile.ratio() - ratio_tolerance) <= 1.0 and tile.area() <= area_tolerance]
@@ -48,8 +50,6 @@ def solve_mosaic(tiles: list[Block], ratio_tolerance: int, area_tolerance: int) 
 
 
 def main():
-    # write your program here
     return 0
-
 
 main()
