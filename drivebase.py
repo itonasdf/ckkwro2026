@@ -8,15 +8,15 @@ from pybricks.parameters import Color, Axis
 from pybricks.tools import StopWatch
 from pybricks.hubs import PrimeHub
 from pybricks.pupdevices import Motor, ColorSensor
-from pybricks.tools import wait
+from pybricks.tools import wait, read_input_byte
 from micropython import const
 from math import pi
 
 PIVOT_LEFT = const(-1)
 PIVOT_RIGHT = const(1)
 
-def clamp(val, min_val: float = -1.0, max_val: float = 1.0): return max(min(val, max_val), min_val)
-def nearest_hash(s: int, params: dict[int]) -> int: return min(params.keys(), key=lambda t: abs(t - s))
+def clamp(val: float, min_val: float = -1.0, max_val: float = 1.0): return max(min(val, max_val), min_val)
+def nearest_hash(s: float, params) -> int: return min(params.keys(), key=lambda t: abs(t - s))
 
 class PIDController:
     __slots__ = (
@@ -91,13 +91,12 @@ class MissionMotor:
 class DriveBaseAPI:
     def __init__(
         self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
-        forward_params, linetrace_params, turn_params, wheel_diameter: int = 62.4, operate_frequency: int = 100
+        forward_params, tagline_params, turn_params, wheel_diameter: float = 62.4, operate_frequency: int = 100
     ):
         self.target_heading = 0
-        self.controller = PIDController()
         self.hub = hub
         self.forward_params = forward_params
-        self.linetrace_params = linetrace_params
+        self.tagline_params = tagline_params
         self.turn_params = turn_params
         self.left_motor = left_motor
         self.right_motor = right_motor
@@ -105,8 +104,9 @@ class DriveBaseAPI:
         self.mm2deg = 360 / (pi * wheel_diameter)
         self.dt = 1 / operate_frequency
         self.throttle = int(1000 / operate_frequency)
-        self.controller.dt = self.dt
-        self.integral = 0.0
+        self.imu_integral = 0.0
+        self.tag_integral = 0.0
+        self.prev_error = 0.0
         self.concurrent_queue: list[Task] = []
 
     def runConcurrent(self, *series) -> None:
@@ -114,16 +114,21 @@ class DriveBaseAPI:
 
     def run(self, *series):
         task = Task(series)
+        timer = StopWatch()
         while True:
+            timer.reset()
             for i in range(len(self.concurrent_queue)-1, -1, -1):
                 if self.concurrent_queue[i].update(): self.concurrent_queue.pop(i)
             if task.update(): break
-            wait(self.throttle)
+            elapsed = timer.time()
+            if elapsed < self.throttle:
+                wait(self.throttle - elapsed)
     
-    def resetEnconder(self) -> None:
+    def resetEnconder(self):
         def callback() -> None:
-            self.integral = 0.0
-            self.controller.reset()
+            self.imu_integral = 0.0
+            self.tag_integral = 0.0
+            self.prev_error = 0.0
             self.left_motor.reset_angle(0)
             self.right_motor.reset_angle(0)
         return callback
@@ -136,16 +141,18 @@ class DriveBaseAPI:
 
     def brake(self):
         def callback() -> None:
-            self.integral = 0.0
-            self.controller.reset()
+            self.imu_integral = 0.0
+            self.tag_integral = 0.0
+            self.prev_error = 0.0
             self.left_motor.brake()
             self.right_motor.brake()
         return callback
     
     def hold(self):
         def callback() -> None:
-            self.integral = 0.0
-            self.controller.reset()
+            self.imu_integral = 0.0
+            self.tag_integral = 0.0
+            self.prev_error = 0.0
             self.left_motor.hold()
             self.right_motor.hold()
         return callback
@@ -160,49 +167,72 @@ class DriveBaseAPI:
         return lambda: self.hub.speaker.beep()
 
     def moveRaw(self, left_speed: int, right_speed: int):
-        left_speed = clamp(left_speed, -100.0, 100.0)
-        right_speed = clamp(right_speed, -100.0, 100.0)
+        ls = clamp(left_speed, -100.0, 100.0)
+        rs = clamp(right_speed, -100.0, 100.0)
         def callback() -> None:
-            self.left_motor.dc(float(left_speed))
-            self.right_motor.dc(float(right_speed))
+            self.left_motor.dc(float(ls))
+            self.right_motor.dc(float(rs))
         return callback
 
-    def moveImu(self, speed: int, kp: float | None = None, ki: float | None = None, kd: float | None = None, debug: bool = False):
-        speed = clamp(speed, -100.0, 100.0)
-        tkp, tki, tkd = self.forward_params[nearest_hash(speed, self.forward_params)]
+    def moveImu(self, speed: int, kp: float | None = None, ki: float | None = None, kd: float | None = None, telemetry: bool = False):
+        s = clamp(speed, -100.0, 100.0)
+        n = 0
+        started = False
+        tkp, tki, tkd = self.forward_params[nearest_hash(s, self.forward_params)]
         kp = tkp if kp is None else kp
         ki = tki if ki is None else ki
         kd = tkd if kd is None else kd
         def callback() -> None:
+            nonlocal started, n
+            if not started:
+                started = True
+                if telemetry: print(f"moveImu_{s}")
+
             error = self.target_heading - self.hub.imu.heading()
             if abs(error) <= 10:
-                self.integral += error * self.dt
-                self.integral = clamp(self.integral)
-            rotation = (error * kp + self.integral * ki - self.hub.imu.angular_velocity(Axis.Z) * kd)
-
-            self.left_motor.dc(float(speed + rotation))
-            self.right_motor.dc(float(speed - rotation))
-            if debug: print(self.hub.imu.heading(), error, self.integral, self.hub.imu.angular_velocity(Axis.Z))
+                self.imu_integral += error * self.dt
+                self.imu_integral = clamp(self.imu_integral)
+            rotation = (error * kp + self.imu_integral * ki - self.hub.imu.angular_velocity(Axis.Z) * kd) #type: ignore
+            n += 10
+            self.left_motor.dc(float(s + rotation))
+            self.right_motor.dc(float(s - rotation))
+            if telemetry:
+                print(f"  t: {n}, sp: {self.target_heading}, imu: {self.hub.imu.heading()}, p: {error}, i: {self.imu_integral}, d: {self.hub.imu.angular_velocity(Axis.Z)}") #type: ignore
         return callback
 
-    def linetrace(self, speed: int, reflection: int, pivot: int = PIVOT_RIGHT):
+    def tagline(self, speed: int, reflection: int, pivot: int = PIVOT_RIGHT, kp: float | None = None, ki: float | None = None, kd: float | None = None, telemetry: bool | None = None):
+        s = clamp(speed, -100.0, 100.0)
+        n = 0
         started = False
-        speed = clamp(speed, -100.0, 100.0)
+        tkp, tki, tkd = self.tagline_params[nearest_hash(speed, self.tagline_params)]
+        kp = tkp if kp is None else kp
+        ki = tki if ki is None else ki
+        kd = tkd if kd is None else kd
         def callback() -> None:
-            nonlocal started
+            nonlocal started, n
             if not started:
-                self.controller.setPID(self.linetrace_params[nearest_hash(speed, self.linetrace_params)])
                 started = True
+                if telemetry: print(f"tagline: speed {s}")
 
-            rotation = self.controller.calculate(reflection, self.color_sensor.reflection())
-            
-            self.left_motor.dc(float((speed + rotation) * pivot))
-            self.right_motor.dc(float((speed - rotation) * pivot))
+            error = reflection - self.color_sensor.reflection()
+            if abs(error) <= 10:
+                self.tag_integral += error * self.dt
+                self.tag_integral = clamp(self.tag_integral)
+
+            derivative = (error - self.prev_error) / self.dt
+            rotation = (kp * error) + (ki * self.tag_integral) + (kd * derivative)
+            self.prev_error = error
+            n += 10
+            self.left_motor.dc(float((s + rotation) * pivot))
+            self.right_motor.dc(float((s - rotation) * pivot))
+            if telemetry:
+                print(f"  t: {n}, sp: {reflection}, imu: {self.hub.imu.heading()}, p: {error}, i: {self.tag_integral}, d: {derivative}") #type: ignore
         return callback
 
-    def turnImu(self, pivot: int = 0, deadzone: float = 15.0, kp: float | None = None, ki: float | None = None, kd: float | None = None, debug: bool = False):
+    def turnImu(self, pivot: int = 0, deadzone: float = 15.0, kp: float | None = None, ki: float | None = None, kd: float | None = None, telemetry: bool = False):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
         started = False
+        n = 0
         integral = 0.0
 
         def compensate(x: float) -> float:
@@ -211,7 +241,7 @@ class DriveBaseAPI:
             return sign * (deadzone + abs(x) * (100 - deadzone) / 100)
 
         def callback() -> None:
-            nonlocal integral, started, kp, ki, kd
+            nonlocal integral, started, kp, ki, kd, n
             if not started:
                 started = True
                 turn_angle = abs(self.target_heading - self.hub.imu.heading())
@@ -219,19 +249,21 @@ class DriveBaseAPI:
                 kp = tkp if kp is None else kp
                 ki = tki if ki is None else ki
                 kd = tkd if kd is None else kd
+                if telemetry: print(f"turnImu: angle {turn_angle}")
 
             error = self.target_heading - self.hub.imu.heading()
             if abs(error) <= 10:
                 integral += error * self.dt
                 integral = clamp(integral)
-            rotation = compensate(error * kp + integral * ki - self.hub.imu.angular_velocity(Axis.Z) * kd)
-
+            rotation = compensate(error * kp + integral * ki - self.hub.imu.angular_velocity(Axis.Z) * kd) #type: ignore
+            n += 10
             self.left_motor.dc(float(rotation * power[0]))
             self.right_motor.dc(float(-rotation * power[1]))
-            if debug: print(self.hub.imu.heading(), error, integral, self.hub.imu.angular_velocity(Axis.Z))
+            if telemetry:
+                print(f"  t: {n}, sp: {self.target_heading}, imu: {self.hub.imu.heading()}, p: {error}, i: {integral}, d: {self.hub.imu.angular_velocity(Axis.Z)}") #type: ignore
         return callback
     
-    def degree(self, target: int):
+    def degree(self, target: int | float):
         return lambda: (abs(self.left_motor.angle()) + abs(self.right_motor.angle())) / 2 >= target
 
     def mm(self, target: int):
@@ -260,11 +292,11 @@ class DriveBaseAPI:
     def colorReflection(self, color: Color):
         return lambda: self.color_sensor.color() == color
 
-    def press(self, button):
+    def untilButton(self, button):
         return lambda: button in self.hub.buttons.pressed()
     
     @staticmethod
-    def timer(target: int):
+    def time(target: int):
         timer = StopWatch()
         started = False
         def callback() -> bool:
@@ -286,3 +318,11 @@ class DriveBaseAPI:
     @staticmethod
     def all(*conditions):
         return lambda: all(c() for c in conditions)
+    
+    @staticmethod
+    def untilstdin(key: str):
+        return lambda: read_input_byte(True, True) == key
+
+    @staticmethod
+    def clsstdio():
+        return lambda: print("\033[2J\033[H", end="")
