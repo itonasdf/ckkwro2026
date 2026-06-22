@@ -1,6 +1,6 @@
 """
 DriveBaseAPI for Pybricks MicroPython
-Supports SPIKE Prime utilizing EV3 codebase
+Supports SPIKE Prime utilizing EV3 codebase (BETA)
 Built by itonasd
 """
 
@@ -17,7 +17,7 @@ PIVOT_RIGHT = const(1)
 def clamp(val: float, min_val: float = -1.0, max_val: float = 1.0): return max(min(val, max_val), min_val)
 def nearest_hash(s: float, params) -> int: return min(params.keys(), key=lambda t: abs(t - s))
 def resolve_pid(params: dict, key, kp, ki, kd):
-    tkp, tki, tkd = params[nearest_hash(key, params)]
+    tkp, tki, tkd = params[nearest_hash(key, params)]   
     return (tkp if kp < 0 else kp,
             tki if ki < 0 else ki,
             tkd if kd < 0 else kd)
@@ -67,7 +67,9 @@ class Task:
 
     def update(self) -> bool:
         step = self.series[self.index]
-        if callable(step):
+        if isinstance(step, Builder):
+            step = step()
+        elif callable(step):
             step()
             self.index += 1
             return self.index >= len(self.series)
@@ -75,6 +77,7 @@ class Task:
         until = step[0]
         task = step[1] if len(step) > 1 else None
         cleanup = step[2] if len(step) > 2 else None
+
         if until():
             if callable(cleanup): cleanup()
             self.index += 1
@@ -104,7 +107,7 @@ class DriveBaseAPI:
         self._hub = hub
         self._straight_params = straight_params
         self._tagline_params = tagline_params
-        self._turn_params = turn_params
+        self._turn_params = turn_params                                                                   
         self._left_motor = left_motor
         self._right_motor = right_motor
         self._color_sensor = color_sensor
@@ -193,7 +196,7 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 self._straight_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"moveImu_{s}")
+                if telemetry: print(f"straight: speed {s} [{kp}, {ki}, {kd}]")
 
             n += self._throttle
             rotation = self._straight_controller.calculate(self._target_heading, self._hub.imu.heading())
@@ -216,12 +219,12 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 self._tag_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"tagline: speed {s}")
+                if telemetry: print(f"tagline: speed {s} [{kp}, {ki}, {kd}]")
 
             n += self._throttle
-            rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection()) * pivot
-            self._left_motor.dc(float(s + rotation))
-            self._right_motor.dc(float(s - rotation))
+            rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection())
+            self._left_motor.dc(float(s + rotation) * pivot)
+            self._right_motor.dc(float(s - rotation) * pivot)
             if telemetry:
                 print(f"  t: {n}, sp: {reflection}, sen: {self._color_sensor.reflection()}, p: {self._tag_controller.error}, i: {self._tag_controller.integral}, d: {self._tag_controller.derivative}")
         return callback
@@ -247,7 +250,7 @@ class DriveBaseAPI:
                 kp, ki, kd = resolve_pid(self._turn_params, turn_angle, kp, ki, kd)
                 self._turn_controller.reset()
                 self._turn_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"turnImu: angle {turn_angle}")
+                if telemetry: print(f"turn: angle {turn_angle} [{kp}, {ki}, {kd}]")
 
             n += self._throttle
             rotation = compensate(self._turn_controller.calculate(self._target_heading, self._hub.imu.heading()))
@@ -286,8 +289,7 @@ class DriveBaseAPI:
     def untilButton(self, button):
         return lambda: button in self._hub.buttons.pressed()
     
-    @staticmethod
-    def ms(target: int):
+    def ms(_, target: int):
         timer = StopWatch()
         started = False
         def callback() -> bool:
@@ -298,22 +300,86 @@ class DriveBaseAPI:
             return timer.time() >= target
         return callback
     
-    @staticmethod
-    def forever():
+    def forever(_):
         return lambda: False
 
-    @staticmethod
-    def any(*conditions):
+    def any(_, *conditions):
         return lambda: any(c() for c in conditions)
 
-    @staticmethod
-    def all(*conditions):
+    def all(_, *conditions):
         return lambda: all(c() for c in conditions)
     
-    @staticmethod
-    def untilStdin(key: str):
+    def untilStdin(_, key: str):
         return lambda: read_input_byte(True, True) == key
 
-    @staticmethod
-    def clearStdio():
+    def clearStdio(_, ):
         return lambda: print("\033[2J\033[H", end="")
+
+
+class Builder:
+    __slots__ = ("_driveBaseAPI", "_until")
+    def __init__(self, driveBaseAPI: DriveBaseAPI, until):
+        self._driveBaseAPI = driveBaseAPI
+        self._until = until
+
+    def straight(
+        self, speed: int, telemetry: bool = False,
+        kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
+    ):
+        return ( self._until, self._driveBaseAPI.straight(speed, telemetry, kp, ki, kd) )
+    
+    def tagline(
+        self, speed: int, reflection: int, pivot: int = PIVOT_RIGHT, telemetry: bool = False,
+        kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
+    ):
+        return ( self._until, self._driveBaseAPI.tagline(speed, reflection, pivot, telemetry, kp, ki, kd) )
+    
+    def turn(
+        self, pivot: int = 0, deadzone: float = 15.0, telemetry: bool = False,
+        kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
+    ):
+        return ( self._until, self._driveBaseAPI.turn(pivot, deadzone, telemetry, kp, ki, kd) )
+    
+    def moveTank(self, left_speed: int, right_speed: int):
+        return ( self._until, self._driveBaseAPI.moveTank(left_speed, right_speed) )
+    
+    def brake(self):
+        return ( self._until, self._driveBaseAPI.brake() )
+    
+    def hold(self):
+        return ( self._until, self._driveBaseAPI.hold() )
+    
+    def coast(self):
+        return ( self._until, self._driveBaseAPI.coast() )
+    
+    def __call__(self):
+        return ( self._until, )
+
+
+class DriveBaseExtended(DriveBaseAPI):
+    def degree(self, target):
+        return Builder(self, super().degree(target))
+    
+    def ms(self, target):
+        return Builder(self, super().ms(target))
+    
+    def heading(self, target, tolerance = 1, stable = 5):
+        return Builder(self, super().heading(target, tolerance, stable))
+    
+    def blackReflection(self, threshold):
+        return Builder(self, super().blackReflection(threshold))
+    
+    def whiteReflection(self, threshold):
+        return Builder(self, super().whiteReflection(threshold))
+    
+    def colorReflection(self, color):
+        return Builder(self, super().colorReflection(color))
+    
+    def untilButton(self, button):
+        return Builder(self, super().untilButton(button))
+    
+    def untilStdin(self, key):
+        return Builder(self, super().untilStdin(key))
+
+    def forever(self):
+        return Builder(self, super().forever())
