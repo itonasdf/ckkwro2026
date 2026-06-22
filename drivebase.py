@@ -219,9 +219,9 @@ class DriveBaseAPI:
                 if telemetry: print(f"tagline: speed {s}")
 
             n += self._throttle
-            rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection())
-            self._left_motor.dc(float(s + rotation) * pivot)
-            self._right_motor.dc(float(s - rotation) * pivot)
+            rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection()) * pivot
+            self._left_motor.dc(float(s + rotation))
+            self._right_motor.dc(float(s - rotation))
             if telemetry:
                 print(f"  t: {n}, sp: {reflection}, sen: {self._color_sensor.reflection()}, p: {self._tag_controller.error}, i: {self._tag_controller.integral}, d: {self._tag_controller.derivative}")
         return callback
