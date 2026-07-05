@@ -65,23 +65,27 @@ class Task:
         self.series = series
         self.index = 0
 
-    def update(self) -> bool:
-        step = self.series[self.index]
-        if callable(step):
-            step()
-            self.index += 1
-            return self.index >= len(self.series)
-        
-        until = step[0]
-        task = step[1] if len(step) > 1 else None
-        cleanup = step[2] if len(step) > 2 else None
-        if until():
-            if callable(cleanup): cleanup()
-            self.index += 1
-            return self.index >= len(self.series)
-        else:
+    def update(self):
+        while self.index < len(self.series):
+            step = self.series[self.index]
+
+            if callable(step):
+                step()
+                self.index += 1
+                continue
+
+            until = step[0]
+            task = step[1] if len(step) > 1 else None
+            cleanup = step[2] if len(step) > 2 else None
+
+            if until():
+                if callable(cleanup): cleanup()
+                self.index += 1
+                continue
+
             if callable(task): task()
-        return False
+            return False
+        return True
 
 class MissionMotor:
     __slots__ = ("_motor",)
@@ -93,7 +97,7 @@ class MissionMotor:
     def hold(self): return lambda: self._motor.hold()
     def stalled(self): return lambda: self._motor.stalled()
     def degree(self, target: int): return lambda: abs(self._motor.angle()) >= target
-    def resetEncoder(self): return lambda: self._motor.reset_angle(0)
+    def resetEncoder(self, target: int = 0): return lambda: self._motor.reset_angle(target)
 
 class DriveBaseAPI:
     def __init__(
@@ -133,18 +137,18 @@ class DriveBaseAPI:
             if elapsed < self._throttle:
                 wait(self._throttle - elapsed)
     
-    def resetEncoder(self):
+    def resetEncoder(self, target: int = 0):
         def callback() -> None:
             self._tag_controller.reset()
             self._straight_controller.reset()
-            self._left_motor.reset_angle(0)
-            self._right_motor.reset_angle(0)
+            self._left_motor.reset_angle(target)
+            self._right_motor.reset_angle(target)
         return callback
 
-    def resetImu(self):
+    def resetImu(self, target: int = 0):
         def callback() -> None:
-            self._target_heading = 0
-            self._hub.imu.reset_heading(0)
+            self._target_heading = target
+            self._hub.imu.reset_heading(target)
         return callback
 
     def brake(self):
@@ -169,8 +173,8 @@ class DriveBaseAPI:
             self._right_motor.stop()
         return callback
 
-    def beep(self):
-        return lambda: self._hub.speaker.beep()
+    def beep(self, freq: int):
+        return lambda: self._hub.speaker.beep(freq, -1)
 
     def moveTank(self, left_speed: int, right_speed: int):
         ls = clamp(left_speed, -100.0, 100.0)
@@ -227,7 +231,7 @@ class DriveBaseAPI:
         return callback
 
     def turn(
-        self, pivot: int = 0, deadzone: float = 15.0, telemetry: bool = False,
+        self, pivot: int = 0, deadzone: float = 20.0, telemetry: bool = False,
         kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
     ):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
@@ -257,7 +261,7 @@ class DriveBaseAPI:
                 print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, p: {self._turn_controller.error}, i: {self._turn_controller.integral}, d: {self._turn_controller.derivative}")
         return callback
     
-    def degree(self, target: int | float):
+    def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
     def heading(self, target: int, tolerance: float = 1.0, stable: int = 5):
