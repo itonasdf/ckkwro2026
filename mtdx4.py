@@ -32,7 +32,7 @@ w = DriveBaseAPI(
         100: (1.0, 0.0, 0.1), -100: (1.0, 0.0, 0.1),
     },
     turn_params = {
-        90:  (1.8, 0.0, 0.02),
+        90:  (2.075, 3.5, 0.05),
     },
 )
 
@@ -51,7 +51,7 @@ GREEN = 2
 WHITE = 3
 
 M2_PICK = 50
-M1_DOWN = 285
+M1_DOWN = 280
 BRAKE_TIME = 20
 
 def mosaicSection():
@@ -72,8 +72,8 @@ def mosaicSection():
         [ w.ms(BRAKE_TIME), w.brake() ],
         w.resetImu(),
         w.resetEncoder(),
-        [ w.heading(45, stable=1), w.turn(PIVOT_RIGHT, kp=8.2, kd=0.24) ],
-        [ w.heading(0), w.turn(PIVOT_LEFT, kp=8.2, kd=0.24) ],
+        [ w.heading(45, stable=1), w.turn(PIVOT_RIGHT, kp=5.6, ki=6.0, kd=0.15) ],
+        [ w.heading(0), w.turn(PIVOT_LEFT, kp=5.6, ki=6.0, kd=0.15) ],
     )
 
     w.runConcurrent(
@@ -92,7 +92,7 @@ def mosaicSection():
 
 def keep(left_or_right):
     w.run(
-        [ w.heading(-115 if left_or_right == PIVOT_RIGHT else -65), w.turn(left_or_right, kp=8.2, kd=0.24) ],
+        [ w.heading(-115 if left_or_right == PIVOT_RIGHT else -65), w.turn(left_or_right, kp=5.6, ki=6.0, kd=0.15) ],
         w.brake(),
     )
 
@@ -110,7 +110,7 @@ def keep(left_or_right):
 
     w.run( # KEEP
         [ w.ms(250) ],
-        [ w.heading(-90), w.turn(left_or_right, kp=8.2, kd=0.24) ],
+        [ w.heading(-90), w.turn(left_or_right, kp=5.6, ki=6.0, kd=0.15) ],
         [ w.ms(50), w.brake() ],
         w.resetEncoder(),
         [ w.degree(25), w.straight(50) ],
@@ -146,8 +146,8 @@ def keep(left_or_right):
 
     w.run( # RETURN TO ORIGINAL POSITION
         [ w.degree(25), w.straight(-50) ],
-        [ w.degree(115), w.straight(-75) ],
-        [ w.degree(140), w.straight(-50) ],
+        [ w.degree(125), w.straight(-75) ],
+        [ w.degree(150), w.straight(-50) ],
         [ w.ms(BRAKE_TIME), w.brake() ]
     )
 
@@ -197,9 +197,9 @@ class moveToDestinationEx4:
         w.run(
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
-            [ w.degree(70), w.straight(50) ],
+            [ w.degree(80), w.straight(50) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
-            [ w.heading(-271), w.turn() ],
+            [ w.heading(-270.5), w.turn() ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder()
         )
@@ -219,7 +219,7 @@ class moveToDestinationEx4:
             [ w.blackReflection(20), w.straight(-50) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             [ w.heading(angle), w.turn() ],
-            [ w.blackReflection(20), w.straight(75) ],
+            [ w.blackReflection(20), w.straight(-75 if self.pick_queue[self.picked-1] == GREEN else 75) ],
             [ w.ms(10), w.brake() ],
             w.resetEncoder(),
             [ w.degree(50), w.straight(50) ],
@@ -402,8 +402,8 @@ class moveToDestinationEx4:
                     [ w.ms(10), w.brake() ],
                     w.resetEncoder(),
                     [ w.degree(50), w.straight(50) ],
-                    [ w.degree(110), w.straight(75) ],
-                    [ w.degree(160), w.straight(50) ]
+                    [ w.degree(100), w.straight(75) ],
+                    [ w.degree(150), w.straight(50) ]
                 )
 
             w.run(
@@ -430,8 +430,8 @@ class moveToDestinationEx4:
         counter = self.pick_map[next_color]
         row = counter // 2
         deg_in = [ 0, 110, 230 ]
-        deg_out = [ 0, 110, 215 ]
-        deg_turn = [ -77, -80, -83 ]
+        deg_out_even = [ 15, 125, 245 ]
+        deg_out_odd = [ 10, 60, 180 ]
 
         if counter % 2 == 0:
             w.run(
@@ -439,15 +439,19 @@ class moveToDestinationEx4:
                 [ w.degree(225 + deg_in[row]), w.straight(75) ],
                 [ w.degree(250 + deg_in[row]), w.straight(50) ],
             )
-
+  
         if counter % 2 != 0:
             w.run(
-                [ w.heading(deg_turn[row]), w.turn(PIVOT_RIGHT, kp=8.2, kd=0.24) ],
+                [ w.degree(25), w.straight(50) ],
+                [ w.degree(100 + deg_in[row]), w.straight(75) ],
+                [ w.degree(125 + deg_in[row]), w.straight(50) ],
+
+                [ w.heading(-76), w.turn(PIVOT_RIGHT, kp=5.6, ki=6.0, kd=0.15) ],
                 [ w.ms(BRAKE_TIME), w.brake() ],
                 w.resetEncoder(),
                 [ w.degree(25), w.straight(50) ],
-                [ w.degree(240 + deg_in[row]), w.straight(75) ],
-                [ w.degree(265 + deg_in[row]), w.straight(50) ],
+                [ w.degree(75), w.straight(75) ],
+                [ w.degree(100), w.straight(50) ],
             )
 
         w.run(
@@ -460,19 +464,35 @@ class moveToDestinationEx4:
         if counter % 2 == 0:
             w.run(
                 [ w.degree(25), w.straight(-50) ],
-                [ w.degree(55 + deg_out[row]), w.straight(-75) ],
-                [ w.degree(80 + deg_out[row]), w.straight(-50) ],
+                [ w.degree(50 + deg_out_even[row]), w.straight(-75) ],
+                [ w.degree(75 + deg_out_even[row]), w.straight(-50) ],
                 [ w.ms(BRAKE_TIME), w.brake() ],
             )
         
         if counter % 2 != 0:
             w.run(
                 [ w.degree(25), w.straight(-50) ],
-                [ w.degree(75 + deg_out[row]), w.straight(-75) ],
-                [ w.degree(100 + deg_out[row]), w.straight(-50) ],
-                [ w.heading(-90), w.turn(PIVOT_RIGHT, kp=8.2, kd=0.24) ],
+                [ w.degree(70), w.straight(-75) ],
+                [ w.degree(95), w.straight(-50) ],
+                [ w.ms(BRAKE_TIME), w.brake() ],
+                [ w.heading(-90), w.turn(PIVOT_RIGHT, kp=5.6, ki=6.0, kd=0.15) ],
                 [ w.ms(BRAKE_TIME), w.brake() ],
             )
+
+            if counter // 2 != 0:
+                w.run(
+                    w.resetEncoder(),
+                    [ w.degree(25), w.straight(-50) ],
+                    [ w.degree(deg_out_odd[row]), w.straight(-75) ],
+                    [ w.degree(25 + deg_out_odd[row]), w.straight(-50) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
+                )
+            else:
+                w.run(
+                    w.resetEncoder(),
+                    [ w.degree(deg_out_odd[row]), w.straight(-50) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
+                )
 
         self.pick_map[next_color] += 1
         self.current_pos = next_color
@@ -481,7 +501,7 @@ class moveToDestinationEx4:
 def main():
     mosaicSection()
 
-    test = moveToDestinationEx4([YELLOW, WHITE, YELLOW, GREEN, WHITE, BLUE, YELLOW, BLUE, WHITE, WHITE, GREEN, BLUE ], -1)
+    test = moveToDestinationEx4([GREEN, WHITE, WHITE, YELLOW, WHITE, WHITE, YELLOW, YELLOW, BLUE, GREEN, GREEN, YELLOW, GREEN ], -1)
     test.gotoNext()
     test.gotoNext()
     keep(PIVOT_RIGHT)
@@ -490,122 +510,7 @@ def main():
     keep(PIVOT_LEFT)
     test.gotoNext()
     test.gotoNext()
-    test.gotoMid()
-    test.gotoNext()
-    test.gotoNext()
-    keep(PIVOT_RIGHT)
-    test.gotoNext()
-    test.gotoNext()
-    keep(PIVOT_LEFT)
-    test.gotoNext()
-    test.gotoNext()
-    
-    return
-
-    w.run(
-        [ w.degree(100), w.straight(50) ],
-        [ w.degree(200), w.straight(75) ],
-        [ w.blackReflection(20), w.straight(100) ],
-        [ w.all(w.blackReflection(20), w.ms(50)), w.straight(100) ],
-        [ w.all(w.blackReflection(20), w.ms(50)), w.straight(100) ],
-        [ w.all(w.blackReflection(20), w.ms(50)), w.straight(75) ],
-        w.brake(),
-        w.resetEncoder(),
-        [ w.degree(50), w.straight(50) ],
-        [ w.degree(75), w.straight(75) ],
-        [ w.degree(125), w.straight(50) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        [ w.heading(-362), w.turn() ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        w.resetEncoder(),
-        [ w.degree(100), w.straight(-50) ],
-        [ w.ms(200), w.straight(-30) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        w.resetEncoder(),
-        w.resetImu(),
-        [ w.degree(100), w.straight(50) ],
-        [ w.degree(200), w.straight(75) ],
-        [ w.degree(600), w.straight(100) ],
-        [ w.degree(700), w.straight(75) ],
-        [ w.blackReflection(20), w.straight(50) ],
-        w.brake(),
-        w.resetEncoder(),
-        [ w.degree(60), w.straight(50) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        [ w.heading(-90), w.turn() ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        w.resetEncoder(),
-        [ m2.degree(90), m2.move(-100) ],
-    )
-
-    w.runConcurrent(
-        [ m2.degree(160), m2.move(-100) ],
-        m2.brake(),
-    )
-
-    w.runConcurrent(
-        [ w.ms(50) ],
-        [ w.ms(500), m1.move(-100) ],
-        [ w.ms(250), m1.move(-75) ],
-        m1.resetEncoder(),
-        m1.hold(),
-    )
-
-    w.run(
-        [ w.ms(500) ],
-        [ w.degree(100), w.straight(-50) ],
-    )
-
-    w.runConcurrent(
-        [ m1.degree(100), m1.move(100) ],
-        [ m1.degree(200), m1.move(50) ],
-        m1.brake(),
-    )
-
-    w.runConcurrent(
-        [ m1.degree(300), m1.move(50) ],
-    )
-
-    w.run(
-        [ w.degree(450), w.straight(-100) ],
-        [ w.degree(550), w.straight(-50) ],
-        [ w.ms(200), w.straight(-30) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        w.resetImu(),
-        w.resetEncoder(),
-        [ w.degree(100), w.straight(50) ],
-        [ w.degree(200), w.straight(75) ],
-        [ w.degree(1000), w.straight(100) ],
-    )
-
-    w.runConcurrent(
-        [ w.ms(250), m2.move(75) ],
-        m2.move(100)
-    )
-
-    w.run(
-        [ w.degree(1100), w.straight(75) ],
-        [ w.degree(1200), w.straight(50) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-    )
-
-    w.run(
-        [ w.degree(1300), w.straight(50) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        w.resetEncoder(),
-        [ w.ms(250) ],
-        [ w.degree(200), w.straight(50) ],
-        [ w.ms(200), w.straight(30) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        w.resetEncoder(),
-        w.resetImu(),
-        [ w.degree(50), w.straight(-50) ],
-        [ w.ms(BRAKE_TIME), w.brake() ],
-        [ m2.degree(140), m2.move(-50) ],
-        [ w.ms(100), m2.brake() ],
-        [ w.ms(300), m2.move(100) ],
-        m2.brake(),
-    )
+    test.gotoHome()
 
 print(f"charging current: {w._hub.charger.current()}")
 print(f"battery voltage:  {w._hub.battery.voltage()}")
