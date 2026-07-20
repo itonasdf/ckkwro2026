@@ -88,27 +88,62 @@ class Task:
         return True
 
 class MissionMotor:
-    __slots__ = ("_motor",)
+    __slots__ = ("_motor", "_kp", "_ki", "_kd")
 
-    def __init__(self, motor: Motor): self._motor = motor
+    def __init__(self, motor: Motor, kp: int = -1, ki: int = -1, kd: int = -1):
+        pid = motor.control.pid()
+        kp = kp if kp != -1 else pid[0]
+        ki = ki if ki != -1 else pid[1]
+        kd = kd if kd != -1 else pid[2]
+        motor.control.pid(kp=kp, ki=ki, kd=kd)
+
+        self._kp = kp
+        self._ki = ki
+        self._kd = kd
+        self._motor = motor
+
     def move(self, speed: int): return lambda: self._motor.dc(speed)
     def coast(self): return lambda: self._motor.stop()
     def brake(self): return lambda: self._motor.brake()
     def hold(self): return lambda: self._motor.hold()
     def stalled(self): return lambda: self._motor.stalled()
+    def degreeAt(self, target: int, tolerance: int = 5): return lambda: target - tolerance <= self._motor.angle() <= target + tolerance
     def degree(self, target: int): return lambda: abs(self._motor.angle()) >= target
     def resetEncoder(self, target: int = 0): return lambda: self._motor.reset_angle(target)
+
+    def track(
+        self, target: int, telemetry: bool = False,
+        kp: int = -1, ki: int = -1, kd: int = -1
+    ):
+        n = 0
+        started = False
+        def callback() -> None:
+            nonlocal started, kp, ki, kd, n
+            if not started:
+                kp = kp if kp != -1 else self._kp
+                ki = ki if ki != -1 else self._ki
+                kd = kd if kd != -1 else self._kd
+                started = True
+                self._motor.control.pid(kp=kp, ki=ki, kd=kd)
+                if telemetry: print(f"track (degree: {target}, kp: {kp}, ki: {ki}, kd: {kd})")
+
+            n += 10
+            self._motor.track_target(target)
+            if telemetry:
+                print(f"  t: {n}, sp: {target}, deg: {self._motor.angle()}")
+        return callback
 
 class DriveBaseAPI:
     def __init__(
         self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
-        straight_params, tagline_params, turn_params, operate_frequency: int = 100
+        straight_params, tagline_params, turn_params, pturn_params, operate_frequency: int = 100
     ):
         self._target_heading = 0
         self._hub = hub
         self._straight_params = straight_params
         self._tagline_params = tagline_params
         self._turn_params = turn_params
+        self._pturn_params = pturn_params
         self._left_motor = left_motor
         self._right_motor = right_motor
         self._color_sensor = color_sensor
@@ -197,7 +232,7 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 self._straight_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"moveImu_{s}")
+                if telemetry: print(f"straight (speed: {s}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
             rotation = self._straight_controller.calculate(self._target_heading, self._hub.imu.heading())
@@ -220,7 +255,7 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 self._tag_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"tagline: speed {s}")
+                if telemetry: print(f"tagline (speed: {s}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
             rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection()) * pivot
@@ -231,7 +266,7 @@ class DriveBaseAPI:
         return callback
 
     def turn(
-        self, pivot: int = 0, deadzone: float = 20.0, telemetry: bool = False,
+        self, pivot: int = 0, deadzone: float = 17.5, telemetry: bool = False,
         kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
     ):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
@@ -248,10 +283,10 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 turn_angle = abs(self._target_heading - self._hub.imu.heading())
-                kp, ki, kd = resolve_pid(self._turn_params, turn_angle, kp, ki, kd)
+                kp, ki, kd = resolve_pid(self._turn_params if pivot == 0 else self._pturn_params, turn_angle, kp, ki, kd)
                 self._turn_controller.reset()
                 self._turn_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"turnImu: angle {turn_angle}")
+                if telemetry: print(f"turn (angle {turn_angle}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
             rotation = compensate(self._turn_controller.calculate(self._target_heading, self._hub.imu.heading()))
@@ -264,7 +299,7 @@ class DriveBaseAPI:
     def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
-    def heading(self, target: int, tolerance: float = 1.0, stable: int = 5):
+    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5):
         n = 0
         started = False
         def callback() -> bool:
