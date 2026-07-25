@@ -49,6 +49,9 @@ class PIDController:
 
     def calculate(self, setpoint: float, measurement: float) -> float:
         self.error = setpoint - measurement
+        if self.prev_error == 0.0:
+            self.prev_error = self.error
+
         if abs(self.error) <= self.integral_deadzone:
             self.integral += self.error * self.dt
             self.integral = clamp(self.integral, -self.integral_limit, self.integral_limit)
@@ -107,9 +110,17 @@ class MissionMotor:
     def brake(self): return lambda: self._motor.brake()
     def hold(self): return lambda: self._motor.hold()
     def stalled(self): return lambda: self._motor.stalled()
-    def degreeAt(self, target: int, tolerance: int = 5): return lambda: target - tolerance <= self._motor.angle() <= target + tolerance
-    def degree(self, target: int): return lambda: abs(self._motor.angle()) >= target
     def resetEncoder(self, target: int = 0): return lambda: self._motor.reset_angle(target)
+    def degree(self, target: int): return lambda: abs(self._motor.angle()) >= target
+
+    def degreeAt(self, target: int, tolerance: int = 1, stable: int = 5):
+        n = 0
+        def callback() -> None:
+            nonlocal n
+            if target - tolerance <= self._motor.angle() <= target + tolerance: n += 1
+            else: n = 0
+            return n >= stable
+        return callback
 
     def track(
         self, target: int, telemetry: bool = False,
@@ -266,7 +277,7 @@ class DriveBaseAPI:
         return callback
 
     def turn(
-        self, pivot: int = 0, deadzone: float = 17.5, telemetry: bool = False,
+        self, pivot: int = 0, deadzone: float = 20.0, telemetry: bool = False,
         kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
     ):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
@@ -290,27 +301,38 @@ class DriveBaseAPI:
 
             n += self._throttle
             rotation = compensate(self._turn_controller.calculate(self._target_heading, self._hub.imu.heading()))
+            #rotation = self._turn_controller.calculate(self._target_heading, self._hub.imu.heading())
             self._left_motor.dc(float(rotation * power[0]))
             self._right_motor.dc(float(-rotation * power[1]))
             if telemetry:
-                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, p: {self._turn_controller.error}, i: {self._turn_controller.integral}, d: {self._turn_controller.derivative}")
+                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, mV: {self._hub.battery.voltage()}")
         return callback
     
     def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
-    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5):
+    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.25, exit: int = 5):
         n = 0
+        n_exit = 0
+        prev = 0
         started = False
         def callback() -> bool:
-            nonlocal n, started
+            nonlocal n, n_exit, prev, started
             if not started:
                 self._target_heading = target
                 started = True
 
             if abs(self._target_heading - self._hub.imu.heading()) <= tolerance: n += 1
             else: n = 0
-            return n >= stable
+
+            if abs(self._hub.imu.heading() - prev) <= exit_tolerance: n_exit += 1
+            else: n_exit = 0
+
+            prev = self._hub.imu.heading()
+
+            if n_exit >= exit: print(f"loop exit error: {abs(self._hub.imu.heading() - self._target_heading)}")
+
+            return n >= stable or n_exit >= exit
         return callback
     
     def blackReflection(self, threshold: int):
