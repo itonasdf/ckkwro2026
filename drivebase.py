@@ -1,6 +1,6 @@
 """
 DriveBaseAPI for Pybricks MicroPython
-Supports SPIKE Prime utilizing EV3 codebase (BETA)
+Supports SPIKE Prime utilizing EV3 codebase
 Built by itonasd
 """
 
@@ -17,7 +17,7 @@ PIVOT_RIGHT = const(1)
 def clamp(val: float, min_val: float = -1.0, max_val: float = 1.0): return max(min(val, max_val), min_val)
 def nearest_hash(s: float, params) -> int: return min(params.keys(), key=lambda t: abs(t - s))
 def resolve_pid(params: dict, key, kp, ki, kd):
-    tkp, tki, tkd = params[nearest_hash(key, params)]   
+    tkp, tki, tkd = params[nearest_hash(key, params)]
     return (tkp if kp < 0 else kp,
             tki if ki < 0 else ki,
             tkd if kd < 0 else kd)
@@ -49,6 +49,9 @@ class PIDController:
 
     def calculate(self, setpoint: float, measurement: float) -> float:
         self.error = setpoint - measurement
+        if self.prev_error == 0.0:
+            self.prev_error = self.error
+
         if abs(self.error) <= self.integral_deadzone:
             self.integral += self.error * self.dt
             self.integral = clamp(self.integral, -self.integral_limit, self.integral_limit)
@@ -65,49 +68,93 @@ class Task:
         self.series = series
         self.index = 0
 
-    def update(self) -> bool:
-        step = self.series[self.index]
-        if isinstance(step, Builder):
-            step = step()
-        elif callable(step):
-            step()
-            self.index += 1
-            return self.index >= len(self.series)
-        
-        until = step[0]
-        task = step[1] if len(step) > 1 else None
-        cleanup = step[2] if len(step) > 2 else None
+    def update(self):
+        while self.index < len(self.series):
+            step = self.series[self.index]
 
-        if until():
-            if callable(cleanup): cleanup()
-            self.index += 1
-            return self.index >= len(self.series)
-        else:
+            if callable(step):
+                step()
+                self.index += 1
+                continue
+
+            until = step[0]
+            task = step[1] if len(step) > 1 else None
+            cleanup = step[2] if len(step) > 2 else None
+
+            if until():
+                if callable(cleanup): cleanup()
+                self.index += 1
+                continue
+
             if callable(task): task()
-        return False
+            return False
+        return True
 
 class MissionMotor:
-    __slots__ = ("_motor",)
+    __slots__ = ("_motor", "_kp", "_ki", "_kd")
 
-    def __init__(self, motor: Motor): self._motor = motor
+    def __init__(self, motor: Motor, kp: int = -1, ki: int = -1, kd: int = -1):
+        pid = motor.control.pid()
+        kp = kp if kp != -1 else pid[0]
+        ki = ki if ki != -1 else pid[1]
+        kd = kd if kd != -1 else pid[2]
+        motor.control.pid(kp=kp, ki=ki, kd=kd)
+
+        self._kp = kp
+        self._ki = ki
+        self._kd = kd
+        self._motor = motor
+
     def move(self, speed: int): return lambda: self._motor.dc(speed)
     def coast(self): return lambda: self._motor.stop()
     def brake(self): return lambda: self._motor.brake()
     def hold(self): return lambda: self._motor.hold()
     def stalled(self): return lambda: self._motor.stalled()
+    def resetEncoder(self, target: int = 0): return lambda: self._motor.reset_angle(target)
     def degree(self, target: int): return lambda: abs(self._motor.angle()) >= target
-    def resetEncoder(self): return lambda: self._motor.reset_angle(0)
+
+    def degreeAt(self, target: int, tolerance: int = 1, stable: int = 5):
+        n = 0
+        def callback() -> None:
+            nonlocal n
+            if target - tolerance <= self._motor.angle() <= target + tolerance: n += 1
+            else: n = 0
+            return n >= stable
+        return callback
+
+    def track(
+        self, target: int, telemetry: bool = False,
+        kp: int = -1, ki: int = -1, kd: int = -1
+    ):
+        n = 0
+        started = False
+        def callback() -> None:
+            nonlocal started, kp, ki, kd, n
+            if not started:
+                kp = kp if kp != -1 else self._kp
+                ki = ki if ki != -1 else self._ki
+                kd = kd if kd != -1 else self._kd
+                started = True
+                self._motor.control.pid(kp=kp, ki=ki, kd=kd)
+                if telemetry: print(f"track (degree: {target}, kp: {kp}, ki: {ki}, kd: {kd})")
+
+            n += 10
+            self._motor.track_target(target)
+            if telemetry:
+                print(f"  t: {n}, sp: {target}, deg: {self._motor.angle()}")
+        return callback
 
 class DriveBaseAPI:
     def __init__(
         self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
-        straight_params, tagline_params, turn_params, operate_frequency: int = 100
+        straight_params, tagline_params, turn_params, pturn_params, operate_frequency: int = 100
     ):
         self._target_heading = 0
         self._hub = hub
         self._straight_params = straight_params
         self._tagline_params = tagline_params
-        self._turn_params = turn_params                                                                   
+        self._turn_params = turn_params
+        self._pturn_params = pturn_params
         self._left_motor = left_motor
         self._right_motor = right_motor
         self._color_sensor = color_sensor
@@ -120,6 +167,8 @@ class DriveBaseAPI:
         self._tag_controller = PIDController()
         self._tag_controller.dt = self._dt
         self._concurrent_queue: list[Task] = []
+
+        hub.imu.settings(angular_velocity_threshold=0.5, acceleration_threshold=1000)
 
     def runConcurrent(self, *series) -> None:
         self._concurrent_queue.append(Task(series))
@@ -136,18 +185,18 @@ class DriveBaseAPI:
             if elapsed < self._throttle:
                 wait(self._throttle - elapsed)
     
-    def resetEncoder(self):
+    def resetEncoder(self, target: int = 0):
         def callback() -> None:
             self._tag_controller.reset()
             self._straight_controller.reset()
-            self._left_motor.reset_angle(0)
-            self._right_motor.reset_angle(0)
+            self._left_motor.reset_angle(target)
+            self._right_motor.reset_angle(target)
         return callback
 
-    def resetImu(self):
+    def resetImu(self, target: int = 0):
         def callback() -> None:
-            self._target_heading = 0
-            self._hub.imu.reset_heading(0)
+            self._target_heading = target
+            self._hub.imu.reset_heading(target)
         return callback
 
     def brake(self):
@@ -172,8 +221,8 @@ class DriveBaseAPI:
             self._right_motor.stop()
         return callback
 
-    def beep(self):
-        return lambda: self._hub.speaker.beep()
+    def beep(self, freq: int):
+        return lambda: self._hub.speaker.beep(freq, -1)
 
     def moveTank(self, left_speed: int, right_speed: int):
         ls = clamp(left_speed, -100.0, 100.0)
@@ -196,14 +245,14 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 self._straight_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"straight: speed {s} [{kp}, {ki}, {kd}]")
+                if telemetry: print(f"straight (speed: {s}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
             rotation = self._straight_controller.calculate(self._target_heading, self._hub.imu.heading())
             self._left_motor.dc(float(s + rotation))
             self._right_motor.dc(float(s - rotation))
             if telemetry:
-                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, p: {self._straight_controller.error}, i: {self._straight_controller.integral}, d: {self._straight_controller.derivative}")
+                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}")
         return callback
 
     def tagline(
@@ -219,18 +268,18 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 self._tag_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"tagline: speed {s} [{kp}, {ki}, {kd}]")
+                if telemetry: print(f"tagline (speed: {s}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
-            rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection())
-            self._left_motor.dc(float(s + rotation) * pivot)
-            self._right_motor.dc(float(s - rotation) * pivot)
+            rotation = self._tag_controller.calculate(reflection, self._color_sensor.reflection()) * pivot
+            self._left_motor.dc(float(s + rotation))
+            self._right_motor.dc(float(s - rotation))
             if telemetry:
-                print(f"  t: {n}, sp: {reflection}, sen: {self._color_sensor.reflection()}, p: {self._tag_controller.error}, i: {self._tag_controller.integral}, d: {self._tag_controller.derivative}")
+                print(f"  t: {n}, sp: {reflection}, sen: {self._color_sensor.reflection()}")
         return callback
 
     def turn(
-        self, pivot: int = 0, deadzone: float = 15.0, telemetry: bool = False,
+        self, pivot: int = 0, deadzone: float = 20.0, telemetry: bool = False,
         kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
     ):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
@@ -247,34 +296,46 @@ class DriveBaseAPI:
             if not started:
                 started = True
                 turn_angle = abs(self._target_heading - self._hub.imu.heading())
-                kp, ki, kd = resolve_pid(self._turn_params, turn_angle, kp, ki, kd)
+                kp, ki, kd = resolve_pid(self._turn_params if pivot == 0 else self._pturn_params, turn_angle, kp, ki, kd)
                 self._turn_controller.reset()
                 self._turn_controller.setPID((kp, ki, kd))
-                if telemetry: print(f"turn: angle {turn_angle} [{kp}, {ki}, {kd}]")
+                if telemetry: print(f"turn (angle {turn_angle}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
             rotation = compensate(self._turn_controller.calculate(self._target_heading, self._hub.imu.heading()))
+            #rotation = self._turn_controller.calculate(self._target_heading, self._hub.imu.heading())
             self._left_motor.dc(float(rotation * power[0]))
             self._right_motor.dc(float(-rotation * power[1]))
             if telemetry:
-                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, p: {self._turn_controller.error}, i: {self._turn_controller.integral}, d: {self._turn_controller.derivative}")
+                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, mV: {self._hub.battery.voltage()}")
         return callback
     
-    def degree(self, target: int | float):
+    def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
-    def heading(self, target: int, tolerance: float = 1.0, stable: int = 5):
+    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.1, exit: int = 5, error_tolerance: float = 2.5):
         n = 0
+        n_exit = 0
+        prev = 0
         started = False
         def callback() -> bool:
-            nonlocal n, started
+            nonlocal n, n_exit, prev, started
             if not started:
                 self._target_heading = target
                 started = True
 
-            if abs(self._target_heading - self._hub.imu.heading()) <= tolerance: n += 1
+            heading_error = abs(self._target_heading - self._hub.imu.heading())
+            if heading_error <= tolerance: n += 1
             else: n = 0
-            return n >= stable
+
+            if abs(self._hub.imu.heading() - prev) <= exit_tolerance and heading_error <= error_tolerance: n_exit += 1
+            else: n_exit = 0
+
+            prev = self._hub.imu.heading()
+
+            if n_exit >= exit: print(f"loop exit error: {abs(self._hub.imu.heading() - self._target_heading)}")
+
+            return n >= stable or n_exit >= exit
         return callback
     
     def blackReflection(self, threshold: int):
@@ -289,7 +350,8 @@ class DriveBaseAPI:
     def untilButton(self, button):
         return lambda: button in self._hub.buttons.pressed()
     
-    def ms(_, target: int):
+    @staticmethod
+    def ms(target: int):
         timer = StopWatch()
         started = False
         def callback() -> bool:
@@ -300,86 +362,26 @@ class DriveBaseAPI:
             return timer.time() >= target
         return callback
     
-    def forever(_):
+    @staticmethod
+    def forever():
         return lambda: False
 
-    def any(_, *conditions):
+    @staticmethod
+    def any(*conditions):
         return lambda: any(c() for c in conditions)
 
-    def all(_, *conditions):
+    @staticmethod
+    def all(*conditions):
         return lambda: all(c() for c in conditions)
+
+    @staticmethod
+    def negate(condition):
+        return lambda: not condition()
     
-    def untilStdin(_, key: str):
+    @staticmethod
+    def untilStdin(key: str):
         return lambda: read_input_byte(True, True) == key
 
-    def clearStdio(_, ):
+    @staticmethod
+    def clearStdio():
         return lambda: print("\033[2J\033[H", end="")
-
-
-class Builder:
-    __slots__ = ("_driveBaseAPI", "_until")
-    def __init__(self, driveBaseAPI: DriveBaseAPI, until):
-        self._driveBaseAPI = driveBaseAPI
-        self._until = until
-
-    def straight(
-        self, speed: int, telemetry: bool = False,
-        kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
-    ):
-        return ( self._until, self._driveBaseAPI.straight(speed, telemetry, kp, ki, kd) )
-    
-    def tagline(
-        self, speed: int, reflection: int, pivot: int = PIVOT_RIGHT, telemetry: bool = False,
-        kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
-    ):
-        return ( self._until, self._driveBaseAPI.tagline(speed, reflection, pivot, telemetry, kp, ki, kd) )
-    
-    def turn(
-        self, pivot: int = 0, deadzone: float = 15.0, telemetry: bool = False,
-        kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
-    ):
-        return ( self._until, self._driveBaseAPI.turn(pivot, deadzone, telemetry, kp, ki, kd) )
-    
-    def moveTank(self, left_speed: int, right_speed: int):
-        return ( self._until, self._driveBaseAPI.moveTank(left_speed, right_speed) )
-    
-    def brake(self):
-        return ( self._until, self._driveBaseAPI.brake() )
-    
-    def hold(self):
-        return ( self._until, self._driveBaseAPI.hold() )
-    
-    def coast(self):
-        return ( self._until, self._driveBaseAPI.coast() )
-    
-    def __call__(self):
-        return ( self._until, )
-
-
-class DriveBaseExtended(DriveBaseAPI):
-    def degree(self, target):
-        return Builder(self, super().degree(target))
-    
-    def ms(self, target):
-        return Builder(self, super().ms(target))
-    
-    def heading(self, target, tolerance = 1, stable = 5):
-        return Builder(self, super().heading(target, tolerance, stable))
-    
-    def blackReflection(self, threshold):
-        return Builder(self, super().blackReflection(threshold))
-    
-    def whiteReflection(self, threshold):
-        return Builder(self, super().whiteReflection(threshold))
-    
-    def colorReflection(self, color):
-        return Builder(self, super().colorReflection(color))
-    
-    def untilButton(self, button):
-        return Builder(self, super().untilButton(button))
-    
-    def untilStdin(self, key):
-        return Builder(self, super().untilStdin(key))
-
-    def forever(self):
-        return Builder(self, super().forever())
