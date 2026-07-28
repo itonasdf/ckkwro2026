@@ -168,6 +168,8 @@ class DriveBaseAPI:
         self._tag_controller.dt = self._dt
         self._concurrent_queue: list[Task] = []
 
+        hub.imu.settings(angular_velocity_threshold=0.5, acceleration_threshold=1000)
+
     def runConcurrent(self, *series) -> None:
         self._concurrent_queue.append(Task(series))
 
@@ -250,7 +252,7 @@ class DriveBaseAPI:
             self._left_motor.dc(float(s + rotation))
             self._right_motor.dc(float(s - rotation))
             if telemetry:
-                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}, p: {self._straight_controller.error}, i: {self._straight_controller.integral}, d: {self._straight_controller.derivative}")
+                print(f"  t: {n}, sp: {self._target_heading}, imu: {self._hub.imu.heading()}")
         return callback
 
     def tagline(
@@ -273,7 +275,7 @@ class DriveBaseAPI:
             self._left_motor.dc(float(s + rotation))
             self._right_motor.dc(float(s - rotation))
             if telemetry:
-                print(f"  t: {n}, sp: {reflection}, sen: {self._color_sensor.reflection()}, p: {self._tag_controller.error}, i: {self._tag_controller.integral}, d: {self._tag_controller.derivative}")
+                print(f"  t: {n}, sp: {reflection}, sen: {self._color_sensor.reflection()}")
         return callback
 
     def turn(
@@ -311,7 +313,7 @@ class DriveBaseAPI:
     def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
-    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.25, exit: int = 5):
+    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.1, exit: int = 5, error_tolerance: float = 2.5):
         n = 0
         n_exit = 0
         prev = 0
@@ -322,10 +324,11 @@ class DriveBaseAPI:
                 self._target_heading = target
                 started = True
 
-            if abs(self._target_heading - self._hub.imu.heading()) <= tolerance: n += 1
+            heading_error = abs(self._target_heading - self._hub.imu.heading())
+            if heading_error <= tolerance: n += 1
             else: n = 0
 
-            if abs(self._hub.imu.heading() - prev) <= exit_tolerance: n_exit += 1
+            if abs(self._hub.imu.heading() - prev) <= exit_tolerance and heading_error <= error_tolerance: n_exit += 1
             else: n_exit = 0
 
             prev = self._hub.imu.heading()
@@ -370,6 +373,10 @@ class DriveBaseAPI:
     @staticmethod
     def all(*conditions):
         return lambda: all(c() for c in conditions)
+
+    @staticmethod
+    def negate(condition):
+        return lambda: not condition()
     
     @staticmethod
     def untilStdin(key: str):
