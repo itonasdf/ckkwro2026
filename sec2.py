@@ -1,6 +1,5 @@
 from wro2026corev2 import expr
 from math import ceil, floor
-from pybricks.parameters import Axis
 
 husky = expr.husky
 w = expr.w
@@ -149,14 +148,14 @@ class MoveToDestinationEx5:
         w.run(
             [ w.degree(875), w.straight(75) ],
             [ w.degree(975), w.straight(50) ],
-            [ w.ms(300), w.straight(40) ],
+            [ w.ms(500), w.straight(40) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
             w.resetImu(90),
 
             [ mf.degreeAt(-360), mf.track(-360) ],
-            [ mf.degreeAt(-520), mf.track(-520) ],
-            [ w.ms(120), w.moveTank(-50, 50) ],
+            [ mf.degreeAt(-515), mf.track(-515) ],
+            [ w.ms(100), w.moveTank(-50, 50) ],
             [ w.ms(180), w.moveTank(50, -50) ],
             [ w.heading(90), w.turn() ],
             [ w.ms(BRAKE_TIME), w.brake() ],
@@ -172,8 +171,8 @@ class MoveToDestinationEx5:
             w.resetEncoder(),
 
             [ mf.degreeAt(-360), mf.track(-360) ],
-            [ mf.degreeAt(-520), mf.track(-520) ],
-            [ w.ms(120), w.moveTank(-50, 50) ],
+            [ mf.degreeAt(-515), mf.track(-515) ],
+            [ w.ms(100), w.moveTank(-50, 50) ],
             [ w.ms(180), w.moveTank(50, -50) ],
             [ w.heading(90), w.turn() ],
             [ w.ms(BRAKE_TIME), w.brake() ],
@@ -189,9 +188,9 @@ class MoveToDestinationEx5:
         )
 
         w.run(
-            [ w.degree(700), w.straight(-100) ],
-            [ w.degree(750), w.straight(-75) ],
-            [ w.degree(800), w.straight(-50) ],
+            [ w.degree(675), w.straight(-100) ],
+            [ w.degree(725), w.straight(-75) ],
+            [ w.degree(775), w.straight(-50) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
         )
 
@@ -211,7 +210,7 @@ class MoveToDestinationEx5:
         w.run(
             [ w.degree(875), w.straight(75) ],
             [ w.degree(975), w.straight(50) ],
-            [ w.ms(300), w.straight(40) ],
+            [ w.ms(500), w.straight(40) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
             w.resetImu(90),
@@ -226,30 +225,34 @@ class MoveToDestinationEx5:
             w.resetEncoder(),
 
             [ w.degree(50), w.straight(50) ],
-            [ w.degree(375), w.straight(75) ],
-            [ w.degree(425), w.straight(50) ],
+            [ w.degree(400), w.straight(75) ],
+            [ w.degree(450), w.straight(50) ],
+            [ w.ms(BRAKE_TIME), w.brake() ],
+
+            [ w.heading(90), w.turn(PIVOT_LEFT) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
 
-            w.heading(90),
             [ w.degree(50), w.straight(50) ],
             [ w.degree(100), w.straight(75) ],
-            [ w.degree(425), w.straight(100) ],
-            [ w.degree(475), w.straight(75) ],
-            [ w.degree(525), w.straight(50) ],
+            [ w.degree(200), w.straight(100) ],
+            [ w.degree(250), w.straight(75) ],
+            [ w.negate(w.colorReflection(COLOR.YELLOW)), w.straight(50) ],
+            [ w.ms(BRAKE_TIME), w.brake() ],
+            
+            [ w.heading(45), w.turn(PIVOT_LEFT) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
-            
-            w.heading(45),
+
             [ w.degree(50), w.straight(50) ],
             [ w.degree(100), w.straight(75) ],
-            [ w.degree(275), w.straight(100) ],
-            [ w.degree(325), w.straight(75) ],
+            [ w.degree(250), w.straight(100) ],
+            [ w.degree(300), w.straight(75) ],
             [ w.blackReflection(20), w.straight(50) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
 
-            [ w.degree(70), w.straight(75) ],
+            [ w.degree(75), w.straight(75) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             [ w.heading(-90.5), w.turn() ],
             [ w.ms(BRAKE_TIME), w.brake() ],
@@ -258,14 +261,14 @@ class MoveToDestinationEx5:
             [ w.degree(50), w.straight(50) ],
             [ w.degree(150), w.straight(75) ],
             [ w.degree(200), w.straight(50) ],
-            [ w.ms(300), w.straight(40) ],
+            [ w.ms(500), w.straight(40) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
             w.resetImu(90),
 
             [ mf.degreeAt(-360), mf.track(-360) ],
-            [ mf.degreeAt(-520), mf.track(-520) ],
-            [ w.ms(120), w.moveTank(-50, 50) ],
+            [ mf.degreeAt(-515), mf.track(-515) ],
+            [ w.ms(100), w.moveTank(-50, 50) ],
             [ w.ms(180), w.moveTank(50, -50) ],
             [ w.heading(90), w.turn() ],
             [ w.ms(BRAKE_TIME), w.brake() ],
@@ -281,8 +284,8 @@ class MoveToDestinationEx5:
             w.resetEncoder(),
 
             [ mf.degreeAt(-360), mf.track(-360) ],
-            [ mf.degreeAt(-520), mf.track(-520) ],
-            [ w.ms(120), w.moveTank(-50, 50) ],
+            [ mf.degreeAt(-515), mf.track(-515) ],
+            [ w.ms(100), w.moveTank(-50, 50) ],
             [ w.ms(180), w.moveTank(50, -50) ],
             [ w.heading(90), w.turn() ],
             [ w.ms(BRAKE_TIME), w.brake() ],
@@ -305,27 +308,27 @@ class MoveToDestinationEx5:
         w.run(
             [ w.degree(25), w.straight(-60) ],
             [ w.degree(50), w.straight(-80) ],
-            [ w.degree(150), w.straight(-100) ],
-            [ w.degree(175), w.straight(-80) ],
-            [ w.degree(200), w.straight(-60) ],
+            [ w.degree(125), w.straight(-100) ],
+            [ w.degree(150), w.straight(-80) ],
+            [ w.degree(175), w.straight(-60) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
 
             [ w.degree(25), w.straight(60) ],
             [ w.degree(50), w.straight(80) ],
-            [ w.degree(160), w.straight(100) ],
-            [ w.degree(185), w.straight(80) ],
-            [ w.degree(210), w.straight(60) ],
+            [ w.degree(135), w.straight(100) ],
+            [ w.degree(160), w.straight(80) ],
+            [ w.degree(185), w.straight(60) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
 
             [ w.heading(-90.5), w.turn(left_or_right) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
             w.resetEncoder(),
 
-            [ w.degree(25), w.straight(60) ],
-            [ w.degree(125), w.straight(80) ],
+            [ w.degree(50), w.straight(60) ],
+            [ w.degree(100), w.straight(80) ],
             [ w.degree(150), w.straight(60) ],
-            [ w.ms(BRAKE_TIME), w.brake() ],
+            [ w.ms(200), w.brake() ],
             w.resetEncoder(),
 
             *expr.mf_mid(),
@@ -333,8 +336,10 @@ class MoveToDestinationEx5:
 
         w.run( # RETURN TO ORIGINAL POSITION
             [ w.degree(25), w.straight(-60) ],
-            [ w.degree(85), w.straight(-80) ],
-            [ w.degree(110), w.straight(-60) ],
+            [ w.degree(50), w.straight(-80) ],
+            [ w.degree(80), w.straight(-100) ],
+            [ w.degree(105), w.straight(-80) ],
+            [ w.degree(130), w.straight(-60) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
         )
 
@@ -366,7 +371,8 @@ class MoveToDestinationEx5:
 
             if self.current == 1.5:
                 w.run(
-                    [ w.degree(25), w.straight(60) ],
+                    [ w.degree(75), w.straight(-60) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
                 )
 
             w.runConcurrent(
@@ -378,20 +384,20 @@ class MoveToDestinationEx5:
         if distance == 4:
             w.run(
                 [ w.blackReflection(20), w.straight(100) ],
-                [ w.all(w.blackReflection(20), w.ms(260)), w.straight(100) ],
+                [ w.all(w.blackReflection(20), w.ms(250)), w.straight(100) ],
                 [ w.all(w.blackReflection(20), w.ms(100)), w.straight(100) ],
                 [ w.all(w.blackReflection(20), w.ms(100)), w.straight(80) ],
             )
         if distance == 3:
             w.run(
                 [ w.blackReflection(20), w.straight(100) ],
-                [ w.all(w.blackReflection(20), w.ms(260)), w.straight(100) ],
+                [ w.all(w.blackReflection(20), w.ms(250)), w.straight(100) ],
                 [ w.all(w.blackReflection(20), w.ms(100)), w.straight(80) ],
             )
         if distance == 2:
             w.run(
                 [ w.blackReflection(20), w.straight(100) ],
-                [ w.all(w.blackReflection(20), w.ms(260)), w.straight(80) ],
+                [ w.all(w.blackReflection(20), w.ms(250)), w.straight(80) ],
             )
         if distance == 1:
             w.run(
@@ -404,8 +410,8 @@ class MoveToDestinationEx5:
                     [ w.ms(BRAKE_TIME), w.brake() ],
                     w.resetEncoder(),
                     [ w.degree(25), w.straight(60) ],
-                    [ w.degree(135), w.straight(80) ],
-                    [ w.degree(160), w.straight(60) ]
+                    [ w.degree(110), w.straight(80) ],
+                    [ w.degree(135), w.straight(60) ]
                 )
 
             w.run(
@@ -415,12 +421,14 @@ class MoveToDestinationEx5:
             )
 
         w.runConcurrent(
-            [ mf.degreeAt(-480), mf.track(-480) ],
+            [ w.ms(100) ],
+            [ mf.degreeAt(-480, stable=1), mf.track(-480) ],
             *expr.mf_release()
         )
 
         w.run(
             w.resetEncoder(),
+            [ w.degree(25), w.straight(-60) ],
             [ w.degree(75), w.straight(-80) ],
             [ w.blackReflection(20), w.straight(-60) ],
             [ w.ms(BRAKE_TIME), w.brake() ],
@@ -431,10 +439,7 @@ class MoveToDestinationEx5:
         row = counter // 2
 
         deg_in_even = [ 235, 355, 475]
-        deg_in_odd = [ 135, 250, 375 ]
-
-        deg_out_even = [ 65, 175, 290 ]
-        deg_out_odd = [ 0, 80, 195 ]
+        deg_in_odd = [ 110, 220, 330 ]
 
         if counter % 2 == 0:
             w.run(
@@ -452,13 +457,13 @@ class MoveToDestinationEx5:
                 [ w.degree(deg_in_odd[row] - 50), w.straight(100) ],
                 [ w.degree(deg_in_odd[row] - 25), w.straight(80) ],
                 [ w.degree(deg_in_odd[row]), w.straight(60) ],
-                [ w.heading(-72), w.turn(PIVOT_RIGHT) ],
+                [ w.heading(-75), w.turn(PIVOT_RIGHT) ],
                 [ w.ms(BRAKE_TIME), w.brake() ],
                 w.resetEncoder(),
 
                 [ w.degree(25), w.straight(60) ],
-                [ w.degree(50), w.straight(80) ],
-                [ w.degree(75), w.straight(60) ],
+                [ w.degree(65), w.straight(80) ],
+                [ w.degree(90), w.straight(60) ],
             )
 
         w.run(
@@ -468,29 +473,63 @@ class MoveToDestinationEx5:
         )
 
         if counter % 2 == 0:
-            w.run(
-                [ w.degree(25), w.straight(-60) ],
-                [ w.degree(deg_out_even[row] - 25), w.straight(-80) ],
-                [ w.degree(deg_out_even[row]), w.straight(-60) ],
-                [ w.ms(BRAKE_TIME), w.brake() ],
-            )
+            if row == 0:
+                w.run(
+                    [ w.degree(25), w.straight(-60) ],
+                    [ w.degree(50), w.straight(-80) ],
+                    [ w.degree(75), w.straight(-60) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
+                )
+
+            if row == 1:
+                w.run(
+                    [ w.degree(25), w.straight(-60) ],
+                    [ w.degree(50), w.straight(-80) ],
+                    [ w.degree(125), w.straight(-100) ],
+                    [ w.degree(150), w.straight(-80) ],
+                    [ w.degree(175), w.straight(-60) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
+                )
+
+            if row == 2:
+                w.run(
+                    [ w.degree(25), w.straight(-60) ],
+                    [ w.degree(50), w.straight(-80) ],
+                    [ w.degree(250), w.straight(-100) ],
+                    [ w.degree(275), w.straight(-80) ],
+                    [ w.degree(300), w.straight(-60) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
+                )
 
         if counter % 2 != 0:
             w.run(
                 [ w.degree(25), w.straight(-60) ],
-                [ w.degree(40), w.straight(-80) ],
-                [ w.degree(65), w.straight(-60) ],
+                [ w.degree(55), w.straight(-80) ],
+                [ w.degree(80), w.straight(-60) ],
                 [ w.ms(BRAKE_TIME), w.brake() ],
                 [ w.heading(-90.5), w.turn(PIVOT_RIGHT) ],
                 [ w.ms(BRAKE_TIME), w.brake() ],
+                w.resetEncoder()
             )
 
-            if counter // 2 != 0:
+            if row == 0:
+                pass
+
+            if row == 1:
                 w.run(
-                    w.resetEncoder(),
                     [ w.degree(25), w.straight(-60) ],
-                    [ w.degree(deg_out_odd[row] - 25), w.straight(-80) ],
-                    [ w.degree(deg_out_odd[row]), w.straight(-60) ],
+                    [ w.degree(50), w.straight(-80) ],
+                    [ w.degree(75), w.straight(-60) ],
+                    [ w.ms(BRAKE_TIME), w.brake() ],
+                )
+
+            if row == 2:
+                w.run(
+                    [ w.degree(25), w.straight(-60) ],
+                    [ w.degree(50), w.straight(-80) ],
+                    [ w.degree(125), w.straight(-100) ],
+                    [ w.degree(150), w.straight(-80) ],
+                    [ w.degree(175), w.straight(-60) ],
                     [ w.ms(BRAKE_TIME), w.brake() ],
                 )
 
@@ -509,9 +548,8 @@ def sec3():
     w.run(
         [ w.degree(100), w.straight(-50) ],
         [ w.degree(200), w.straight(-75) ],
-        [ w.degree(1450), w.straight(-100) ],
-        [ w.degree(1550), w.straight(-75) ],
-        [ w.ms(BRAKE_TIME), w.brake() ]
+        [ w.degree(1200), w.straight(-100) ],
+        [ w.degree(1300), w.straight(-75) ],
     )
 
     w.runConcurrent(
@@ -522,14 +560,15 @@ def sec3():
     )
 
     w.run(
-        [ w.degree(1700), w.straight(-50) ],
+        [ w.degree(1500), w.straight(-50) ],
         [ w.ms(BRAKE_TIME), w.brake() ],
         [ w.untilStdin("w") ]
     )
 
 def section2_main():
     set0()
-    asd = MoveToDestinationEx5([ YELLOW, BLUE, YELLOW, YELLOW, GREEN, GREEN, YELLOW, GREEN, GREEN, BLUE, BLUE, WHITE ])
+    asd = MoveToDestinationEx5([ YELLOW, BLUE, YELLOW, YELLOW, GREEN, GREEN, GREEN, GREEN, GREEN, BLUE, BLUE, WHITE ])
+
     asd.gotoNext()
     asd.gotoNext()
     asd.keep(PIVOT_RIGHT)
