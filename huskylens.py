@@ -4,7 +4,7 @@ Supports EV3 and SPIKE Prime (requires Pybricks 4.0 beta firmware)
 Only supports HuskyLens V1, as we does not have V2 hardware
 Built by itonasd
 """
- 
+
 from pybricks.iodevices import UARTDevice
 from pybricks.parameters import Port
 from pybricks.tools import wait
@@ -20,6 +20,8 @@ CMD_REQUEST_KNOCK = const(0x2C)
 CMD_REQUEST_ALGORITHM = const(0x2D)
 CMD_RETURN_OK = const(0x2E)
 CMD_REQUEST_FIRMWARE_VERSION = const(0x3C)
+CMD_REQUEST_CUSTOM_TEXT = const(0x34)
+CMD_REQUEST_CLEAR_TEXT = const(0x35)
 
 ALGORITHM_FACE_RECOGNITION = const(0)
 ALGORITHM_OBJECT_TRACKING = const(1)
@@ -52,7 +54,7 @@ class Block:
     def cx(self) -> int: return self.x + self.width // 2
     def cy(self) -> int: return self.y + self.height // 2
     def area(self) -> int: return self.width * self.height
-    def ratio(self) -> int: return self.width / self.height if self.height else 0
+    def ratio(self) -> float: return self.width / self.height if self.height else 0
 
 
 class Huskylens:
@@ -71,9 +73,9 @@ class Huskylens:
 
     def _readv1(self, size: int) -> bytes:
         data = bytearray()
-        for _ in range(150):
+        for _ in range(100):
             if self.huskylens.waiting():
-                chunk = self.huskylens.read()
+                chunk = self.huskylens.read(1)
                 if chunk: data.extend(chunk)
             if len(data) >= size: return bytes(data[:size])
             wait(1)
@@ -81,7 +83,7 @@ class Huskylens:
 
     def readv1(self) -> tuple[int | None, bytes | None]:
         window = bytearray()
-        for _ in range(100):
+        for _ in range(25):
             b = self._readv1(1)
             window.extend(b)
             if len(window) > 3: window.pop(0)
@@ -101,7 +103,7 @@ class Huskylens:
         if checksum == self.checksum(expected): return command, payload
         else: return None, None
 
-    def cmdv1(self, command: int, payload: bytes | None = None) -> None:
+    def cmdv1(self, command: int, payload: bytearray | None = None) -> None:
         payload_length = len(payload) if payload else 0
         checksum_pos = 5 + payload_length 
         buffer = self.cmd_buffer
@@ -139,6 +141,16 @@ class Huskylens:
         _, payload = self.readv1()
         if payload: return payload.decode("utf-8")
         return None
+
+    def text(self, x: int, y: int, text: str) -> None:
+        params = bytearray([len(text), 0 if x <= 255 else 0xFF, x % 255, y])
+        def ascii_to_bytes(s):
+            return bytes(ord(c) for c in s)
+        params.extend(ascii_to_bytes(text))
+        self.cmdv1(CMD_REQUEST_CUSTOM_TEXT, params)
+    
+    def cleartext(self) -> None:
+        return self.cmdv1(CMD_REQUEST_CLEAR_TEXT)
     
     def retrieve(self, id: int | None = None) -> list[Block]:
         blocks: list[Block] = []
@@ -149,12 +161,12 @@ class Huskylens:
 
         cmd, info = self.readv1()
         if cmd == CMD_RETURN_INFO:
-            n = struct.unpack("h", info[:2])[0] if len(info) >= 2 else 0
+            n = struct.unpack("h", info[:2])[0] if len(info) >= 2 else 0 #type: ignore
 
             for _ in range(n):
                 cmd, data = self.readv1()
                 if cmd == CMD_RETURN_BLOCK:
-                    obj = Block(*struct.unpack("hhhhh", data))
+                    obj = Block(*struct.unpack("hhhhh", data)) #type: ignore
                     if (id is None or obj.id == id): blocks.append(obj)
 
         self.flush()
