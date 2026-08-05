@@ -1,12 +1,13 @@
 """
-Program's Entry Point for WRO2026 Senior
+Program's Core for WRO2026 Senior
 """
 
 from pybricks.parameters import Port, Color, Direction
 from pybricks.pupdevices import Motor, ColorSensor
 from pybricks.hubs import PrimeHub
+from pybricks.tools import wait
 
-from huskylens import Huskylens, Block, ALGORITHM_COLOR_RECOGNITION
+from huskylens import Huskylens, Block
 from drivebase import DriveBaseAPI, MissionMotor, PIVOT_LEFT, PIVOT_RIGHT
 
 # (0,0)#1, (0,1)#2, (0,2), (0,3)
@@ -14,7 +15,6 @@ from drivebase import DriveBaseAPI, MissionMotor, PIVOT_LEFT, PIVOT_RIGHT
 # (2,0)#3, (2,1)#4, (2,2), (2,3)
 
 class expr:
-    ALGORITHM_COLOR_RECOGNITION = ALGORITHM_COLOR_RECOGNITION
     PIVOT_LEFT = PIVOT_LEFT
     PIVOT_RIGHT = PIVOT_RIGHT
     BRAKE_TIME = 20
@@ -31,10 +31,15 @@ class expr:
         [YELLOW, YELLOW, GREEN, GREEN]
     ]
 
+    homography_matrix = [
+        [ 1.48125806e+00,  2.11608295e-01, -5.50181566e+01],
+        [-1.24691686e-02,  1.68333776e+00, -2.48136456e+01],
+        [-4.15638954e-05,  7.99071870e-04,  1.00000000e+00]
+    ]
+
     husky = Huskylens(Port.E)
-    mf = MissionMotor(Motor(Port.C, Direction.CLOCKWISE), kp=700000, ki=350000, kd=5000)
-    mf._motor.control.limits(speed=1150)
-    mb = MissionMotor(Motor(Port.A, Direction.COUNTERCLOCKWISE), kp=10000, ki=5000, kd=300)
+    mf = MissionMotor(Motor(Port.C, Direction.CLOCKWISE), kp=600000, ki=300000, kd=5000)
+    mb = MissionMotor(Motor(Port.A, Direction.COUNTERCLOCKWISE), kp=200000, ki=100000, kd=5000)
     w = DriveBaseAPI(
         Motor(Port.B, Direction.COUNTERCLOCKWISE), 
         Motor(Port.D, Direction.CLOCKWISE), 
@@ -46,26 +51,60 @@ class expr:
             100: (5.0, 7.5, 0.65), -100: (5.0, 7.5, 0.65),
         },
         tagline_params = {
-            -75:  (1.4, 0.0, 0.08),
-            -50: (1.2, 0.0, 0.065),
-            50:  (1.2, 0.0, 0.065),
-            75:  (1.4, 0.0, 0.08),
+            40:  (1.15, 0.0, 0.0625),
+            50:  (1.3, 0.0, 0.0685),
+            75:  (1.5, 0.0, 0.0825),
         },
         turn_params = {
-            90:  (3.0, 0.0, 0.035),
+            30: (3.5, 0.0, 0.05),
+            90:  (3.0, 0.0, 0.04365),
         },
         pturn_params = {
-            90:  (9.0, 0.0, 0.24),
+            30:  (8.65, 0.0, 0.2065),
+            90:  (10.0, 0.0, 0.25),
         }
     )
 
     @staticmethod
-    def getMosaicData(tiles: list[Block], ratio_tolerance: int, area_tolerance: int) -> list[list[int]] | None:
-        #filtered = [tile for tile in tiles if abs(tile.ratio() - ratio_tolerance) <= 1.0 and tile.area() <= area_tolerance]
-        filtered = tiles
-        if len(filtered) < 12: return None
-        sort_by_row = sorted(filtered, key = lambda tile: tile.y)
-        return [[v.id for v in sorted(sort_by_row[i:i+4], key = lambda tile: tile.x)] for i in range(0, 12, 4)]
+    def portView():
+        while 1:
+            print("\033[H\033[2J\033[3J", end="")
+            print(f"heading: {expr.w._hub.imu.heading():.2f} \nl_motor: {expr.w._left_motor.angle()} \nr_motor: {expr.w._right_motor.angle()} \nmf_motor: {expr.mf._motor.angle()} \nmb_motor: {expr.mb._motor.angle()} \nsensor: {expr.w._color_sensor.reflection()} \nvoltage: {expr.w._hub.battery.voltage()} \n")
+            wait(100)
+
+    @staticmethod
+    def getMosaicDataEx2(tiles: list[Block]):
+        def transform(x: float, y: float):
+            matrix = expr.homography_matrix
+            u = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2]
+            v = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2]
+            w = matrix[2][0] * x + matrix[2][1] * y + matrix[2][2]
+            u /= w
+            v /= w
+            return [ u, v ]
+        
+        cx_arr = [v.x + v.width / 2 for v in tiles]
+        cy_arr = [v.y + v.height / 2 for v in tiles]
+        warped_arr = [transform(cx_arr[i], cy_arr[i]) for i in range(len(tiles))]
+
+        min_x = min(x for x, _ in warped_arr)
+        max_x = max(x for x, _ in warped_arr)
+        min_y = min(y for _, y in warped_arr)
+        max_y = max(y for _, y in warped_arr)
+        cell_w = (max_x - min_x) / 3
+        cell_h = (max_y - min_y) / 2
+
+        for i in range(len(tiles)):
+            x, y = warped_arr[i]
+            x -= min_x
+            y -= min_y
+
+            col = round(x / cell_w)
+            row = round(y / cell_h)
+            col = max(0, min(col, 3))
+            row = max(0, min(row, 2))
+
+            expr.color_var[row][col] = tiles[i].id - 1
 
     @staticmethod
     def mf_set0():
@@ -104,7 +143,7 @@ class expr:
         return (
             [ mf.degree(75), mf.move(-50) ],
             [ mf.degree(200), mf.move(-25) ],
-            [ mf.degreeAt(-565), mf.track(-565) ],
+            [ mf.degreeAt(-575), mf.track(-575) ],
         )
 
     @staticmethod
@@ -114,7 +153,7 @@ class expr:
         return (
             [ mf.degree(75), mf.move(-50) ],
             [ mf.degree(200), mf.move(-25) ],
-            [ mf.degreeAt(-500), mf.track(-500) ],
+            [ mf.degreeAt(-510), mf.track(-510) ],
         )
 
     @staticmethod
@@ -138,7 +177,7 @@ class expr:
         w = expr.w
         mf = expr.mf
         return (
-            [ mf.degreeAt(-500, tolerance, stable), mf.track(-500) ],
+            [ mf.degreeAt(-510, tolerance, stable), mf.track(-510) ],
         )
 
     @staticmethod
@@ -146,7 +185,7 @@ class expr:
         w = expr.w
         mf = expr.mf
         return (
-            [ mf.degreeAt(-600), mf.track(-600) ],
+            [ mf.degreeAt(-650), mf.track(-650) ],
         )
 
     @staticmethod
@@ -154,7 +193,7 @@ class expr:
         w = expr.w
         mf = expr.mf
         return (
-            [ mf.degreeAt(-565), mf.track(-565) ],
+            [ mf.degreeAt(-575), mf.track(-575) ],
         )
 
     @staticmethod
@@ -176,7 +215,7 @@ class expr:
         w = expr.w
         mb = expr.mb
         return (
-            [ mb.degreeAt(-30), mb.track(-30) ],
+            [ mb.degreeAt(-40), mb.track(-40) ],
             [ w.ms(50), mb.move(50) ],
             [ w.ms(100), mb.move(75) ],
             [ w.ms(100), mb.move(100) ],
@@ -191,7 +230,7 @@ class expr:
         w = expr.w
         mb = expr.mb
         return (
-            [ mb.degreeAt(-280), mb.track(-280) ],
+            [ mb.degreeAt(-170), mb.track(-170) ],
         )
 
     @staticmethod
@@ -199,7 +238,7 @@ class expr:
         w = expr.w
         mb = expr.mb
         return (
-            [ mb.degreeAt(-75), mb.track(-75) ],
+            [ mb.degreeAt(-90), mb.track(-90) ],
         )
 
     @staticmethod
