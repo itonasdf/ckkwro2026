@@ -12,12 +12,12 @@ WHITE = expr.WHITE
 COLOR = expr.COLOR
 color_var = expr.color_var
 
-ALGORITHM_COLOR_RECOGNITION = expr.ALGORITHM_COLOR_RECOGNITION
+
 PIVOT_LEFT = expr.PIVOT_LEFT
 PIVOT_RIGHT = expr.PIVOT_RIGHT
 BRAKE_TIME = expr.BRAKE_TIME
 
-getMosaicData = expr.getMosaicData
+
 
 
 
