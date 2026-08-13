@@ -1,5 +1,5 @@
 """
-Program's Core for WRO2026 Senior
+Program's Entry Point for WRO2026 Senior
 """
 
 from pybricks.parameters import Port, Color, Direction
@@ -7,7 +7,7 @@ from pybricks.pupdevices import Motor, ColorSensor
 from pybricks.hubs import PrimeHub
 from pybricks.tools import wait
 
-from huskylens import Huskylens, Block
+from huskylens import Huskylens, Block, ALGORITHM_COLOR_RECOGNITION
 from drivebase import DriveBaseAPI, MissionMotor, PIVOT_LEFT, PIVOT_RIGHT
 
 # (0,0)#1, (0,1)#2, (0,2), (0,3)
@@ -15,6 +15,7 @@ from drivebase import DriveBaseAPI, MissionMotor, PIVOT_LEFT, PIVOT_RIGHT
 # (2,0)#3, (2,1)#4, (2,2), (2,3)
 
 class expr:
+    ALGORITHM_COLOR_RECOGNITION = ALGORITHM_COLOR_RECOGNITION
     PIVOT_LEFT = PIVOT_LEFT
     PIVOT_RIGHT = PIVOT_RIGHT
     BRAKE_TIME = 20
@@ -23,7 +24,11 @@ class expr:
     BLUE = 1
     GREEN = 2
     WHITE = 3
-    COLOR = Color
+
+    WHITECLR = Color(210, 30, 80)
+    YELLOWCLR = Color(56, 60, 65)
+    BLUECLR = Color(230, 85, 20)
+    GREENCLR = Color(190, 40, 15)
 
     color_var = [
         [YELLOW, YELLOW, BLUE, BLUE],
@@ -39,7 +44,7 @@ class expr:
 
     husky = Huskylens(Port.E)
     mf = MissionMotor(Motor(Port.C, Direction.CLOCKWISE), kp=600000, ki=300000, kd=5000)
-    mb = MissionMotor(Motor(Port.A, Direction.COUNTERCLOCKWISE), kp=200000, ki=100000, kd=5000)
+    mb = MissionMotor(Motor(Port.A, Direction.COUNTERCLOCKWISE), kp=50000, ki=25000, kd=1250)
     w = DriveBaseAPI(
         Motor(Port.B, Direction.COUNTERCLOCKWISE), 
         Motor(Port.D, Direction.CLOCKWISE), 
@@ -51,18 +56,21 @@ class expr:
             100: (5.0, 7.5, 0.65), -100: (5.0, 7.5, 0.65),
         },
         tagline_params = {
-            40:  (1.15, 0.0, 0.0625),
-            50:  (1.3, 0.0, 0.0685),
-            75:  (1.5, 0.0, 0.0825),
+            40:  (1.15, 0.0, 0.06),
+            50:  (1.3, 0.0, 0.065),
+            75:  (1.5, 0.0, 0.08),
         },
         turn_params = {
-            30: (3.5, 0.0, 0.05),
-            90:  (3.0, 0.0, 0.04365),
+            30: (4.0, 0.0, 0.065),
+            90:  (3.0, 0.0, 0.04375),
         },
         pturn_params = {
-            30:  (8.65, 0.0, 0.2065),
-            90:  (10.0, 0.0, 0.25),
-        }
+            30:  (8.685, 0.0, 0.2),
+            90:  (9.5, 0.0, 0.275),
+        },
+        color_params = [
+            YELLOWCLR, GREENCLR, BLUECLR, WHITECLR, Color(230, 40, 15)
+        ]
     )
 
     @staticmethod
@@ -108,145 +116,40 @@ class expr:
 
     @staticmethod
     def mf_set0():
-        w = expr.w
         mf = expr.mf
-
         return (
-            [ w.ms(50), mf.move(50) ],
-            [ w.ms(100), mf.move(75) ],
-            [ w.ms(80), mf.move(100) ],
-            [ w.ms(100), mf.move(75) ],
-            [ w.ms(50), mf.move(50) ],
+            [ mf.stable(stable=20), mf.move(75) ],
             mf.resetEncoder(),
             mf.brake()
         )
 
     @staticmethod
     def mf_set0d():
-        w = expr.w
         mf = expr.mf
         return (
-            [ mf.degreeAt(-40), mf.track(-40) ],
-            [ w.ms(50), mf.move(50) ],
-            [ w.ms(100), mf.move(75) ],
-            [ w.ms(80), mf.move(100) ],
-            [ w.ms(100), mf.move(75) ],
-            [ w.ms(50), mf.move(50) ],
+            [ mf.degreeAt(-50), mf.track(-50) ],
+            [ mf.stable(stable=20), mf.move(75) ],
             mf.resetEncoder(),
             mf.brake()
         )
 
     @staticmethod
-    def mf_keep():
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degree(75), mf.move(-50) ],
-            [ mf.degree(200), mf.move(-25) ],
-            [ mf.degreeAt(-575), mf.track(-575) ],
-        )
-
-    @staticmethod
-    def mf_keeppick():
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degree(75), mf.move(-50) ],
-            [ mf.degree(200), mf.move(-25) ],
-            [ mf.degreeAt(-510), mf.track(-510) ],
-        )
-
-    @staticmethod
-    def mf_mid():
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degreeAt(-150), mf.track(-150) ],
-        )
-
-    @staticmethod
-    def mf_low():
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degreeAt(-185), mf.track(-185) ],
-        )
-
-    @staticmethod
-    def mf_pick(tolerance = 1, stable = 5):
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degreeAt(-510, tolerance, stable), mf.track(-510) ],
-        )
-
-    @staticmethod
-    def mf_releasemax():
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degreeAt(-650), mf.track(-650) ],
-        )
-
-    @staticmethod
-    def mf_release():
-        w = expr.w
-        mf = expr.mf
-        return (
-            [ mf.degreeAt(-575), mf.track(-575) ],
-        )
-
-    @staticmethod
     def mb_set0():
-        w = expr.w
         mb = expr.mb
         return (
-            [ w.ms(50), mb.move(50) ],
-            [ w.ms(100), mb.move(75) ],
-            [ w.ms(100), mb.move(100) ],
-            [ w.ms(100), mb.move(75) ],
-            [ w.ms(50), mb.move(50) ],
+            [ mb.stable(stable=15), mb.move(-65) ],
             mb.resetEncoder(),
             mb.brake()
         )
 
     @staticmethod
     def mb_set0d():
-        w = expr.w
         mb = expr.mb
         return (
-            [ mb.degreeAt(-40), mb.track(-40) ],
-            [ w.ms(50), mb.move(50) ],
-            [ w.ms(100), mb.move(75) ],
-            [ w.ms(100), mb.move(100) ],
-            [ w.ms(100), mb.move(75) ],
-            [ w.ms(50), mb.move(50) ],
+            [ mb.degreeAt(50), mb.track(50), ],
+            [ mb.stable(stable=15), mb.move(-65) ],
             mb.resetEncoder(),
             mb.brake()
-        )
-
-    @staticmethod
-    def mb_up2mid():
-        w = expr.w
-        mb = expr.mb
-        return (
-            [ mb.degreeAt(-170), mb.track(-170) ],
-        )
-
-    @staticmethod
-    def mb_fixback():
-        w = expr.w
-        mb = expr.mb
-        return (
-            [ mb.degreeAt(-90), mb.track(-90) ],
-        )
-
-    @staticmethod
-    def mb_down():
-        w = expr.w
-        mb = expr.mb
-        return (
-            [ mb.degreeAt(-310), mb.track(-310) ],
         )
 
 
