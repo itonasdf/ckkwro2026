@@ -95,9 +95,9 @@ class MissionMotor:
 
     def __init__(self, motor: Motor, kp: int = -1, ki: int = -1, kd: int = -1):
         pid = motor.control.pid()
-        kp = kp if kp != -1 else pid[0]
-        ki = ki if ki != -1 else pid[1]
-        kd = kd if kd != -1 else pid[2]
+        kp = kp if kp != -1 else pid[0] #type: ignore
+        ki = ki if ki != -1 else pid[1] #type: ignore
+        kd = kd if kd != -1 else pid[2] #type: ignore
         motor.control.pid(kp=kp, ki=ki, kd=kd)
 
         self._kp = kp
@@ -115,10 +115,22 @@ class MissionMotor:
 
     def degreeAt(self, target: int, tolerance: int = 1, stable: int = 5):
         n = 0
-        def callback() -> None:
+        def callback() -> bool:
             nonlocal n
-            if target - tolerance <= self._motor.angle() <= target + tolerance: n += 1
+            if abs(self._motor.angle() - target) <= tolerance: n += 1
             else: n = 0
+            return n >= stable
+        return callback
+
+    def stable(self, tolerance: int = 1, stable: int = 10):
+        n = 0
+        prev = None
+        def callback() -> bool:
+            nonlocal n, prev
+            angle = self._motor.angle()
+            if prev is not None and abs(angle - prev) <= tolerance: n += 1
+            else: n = 0
+            prev = angle
             return n >= stable
         return callback
 
@@ -147,7 +159,7 @@ class MissionMotor:
 class DriveBaseAPI:
     def __init__(
         self, left_motor: Motor, right_motor: Motor, color_sensor: ColorSensor, hub: PrimeHub,
-        straight_params, tagline_params, turn_params, pturn_params, operate_frequency: int = 100
+        straight_params, tagline_params, turn_params, pturn_params, color_params, operate_frequency: int = 100
     ):
         self._target_heading = 0
         self._hub = hub
@@ -168,7 +180,8 @@ class DriveBaseAPI:
         self._tag_controller.dt = self._dt
         self._concurrent_queue: list[Task] = []
 
-        hub.imu.settings(angular_velocity_threshold=0.5, acceleration_threshold=1000)
+        color_sensor.detectable_colors(color_params)
+        hub.imu.settings(angular_velocity_threshold=2.0, acceleration_threshold=2000)
 
     def runConcurrent(self, *series) -> None:
         self._concurrent_queue.append(Task(series))
@@ -313,7 +326,7 @@ class DriveBaseAPI:
     def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
-    def heading(self, target: int, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.1, exit: int = 5, error_tolerance: float = 2.5):
+    def heading(self, target: float, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.1, exit: int = 5, error_tolerance: float = 2.5):
         n = 0
         n_exit = 0
         prev = 0
