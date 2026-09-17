@@ -1,0 +1,98 @@
+"""
+InstructorAPI for Pybricks MicroPython
+Supports SPIKE Prime
+Built by itonasd
+"""
+
+from pybricks.parameters import Button
+from pybricks.hubs import PrimeHub
+from pybricks.pupdevices import Motor
+import struct
+
+class InstructorAPI:
+    def __init__(self, left_motor: Motor, right_motor: Motor, hub: PrimeHub):
+        self._left_motor = left_motor
+        self._right_motor = right_motor
+        self._hub = hub
+
+    def reset_heap(self):
+        for i in range(512):
+            self._hub.system.storage(i, write=struct.pack(">b", 0))
+        self._hub.system.storage(0, write=struct.pack(">h", 8))
+
+    def set_heap_ptr_relative(self, value: int):
+        self._hub.system.storage(0, write=struct.pack(">h", struct.unpack(">h", self._hub.system.storage(0, read=2))[0] + value))
+
+    def read_heap_ptr(self) -> int:
+        return struct.unpack(">h", self._hub.system.storage(0, read=2))[0]
+
+    def set_instruct(self, l_deg: int, r_deg: int, heading: float):
+        heap_ptr = self.read_heap_ptr()
+        self._hub.system.storage(heap_ptr, write=struct.pack(">h", l_deg))
+        self._hub.system.storage(heap_ptr+2, write=struct.pack(">h", r_deg))
+        self._hub.system.storage(heap_ptr+4, write=struct.pack(">f", heading))
+        self.set_heap_ptr_relative(8)
+    
+    def read_instruct_all(self):
+        offset = 8
+        heap_ptr = self.read_heap_ptr()
+        out = []
+
+        while offset < heap_ptr:
+            l_deg: int = struct.unpack(">h", self._hub.system.storage(offset, read=2))[0]
+            r_deg: int = struct.unpack(">h", self._hub.system.storage(offset+2, read=2))[0]
+            heading: float = struct.unpack(">f", self._hub.system.storage(offset+4, read=4))[0]
+            out.append(( l_deg, r_deg, heading ))
+            offset += 8
+
+        return out
+
+    def read_instruct(self, index: int) -> tuple[int, int, float]:
+        offset = (index * 8) + 8
+        l_deg: int = struct.unpack(">h", self._hub.system.storage(offset, read=2))[0]
+        r_deg: int = struct.unpack(">h", self._hub.system.storage(offset+2, read=2))[0]
+        heading: float = struct.unpack(">f", self._hub.system.storage(offset+4, read=4))[0]
+        return ( l_deg, r_deg, heading )
+
+    def record(self):
+        self._left_motor.reset_angle(0)
+        self._right_motor.reset_angle(0)
+        self._left_motor.stop()
+        self._right_motor.stop()
+        self._hub.display.pixel(4, 4)
+
+        prev_left = False
+        prev_right = False
+
+        while 1:
+            left = Button.LEFT in self._hub.buttons.pressed()
+            right = Button.RIGHT in self._hub.buttons.pressed()
+
+            if left and not prev_left:
+                self._hub.speaker.beep(784, 100)
+                self._hub.speaker.beep(523, 200)
+                break
+
+            if right and not prev_right:
+                """
+
+                typedef struct _instruct {
+                    short l_degree, r_degree;
+                    float heading;
+                } instruct; sizeof(instruct) -> 8
+
+                typedef struct _heap {
+                    short heap_ptr;
+                    instruct arr[63];
+                } heap; sizeof(heap) -> 512
+
+                """
+
+                self.set_instruct(self._left_motor.angle(), self._right_motor.angle(), self._hub.imu.heading())
+                self._left_motor.reset_angle(0)
+                self._right_motor.reset_angle(0)
+                self._hub.speaker.beep(523, 100)
+                self._hub.speaker.beep(784, 200)
+
+            prev_left = left
+            prev_right = right
