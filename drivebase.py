@@ -104,6 +104,7 @@ class MissionMotor:
         self._ki = ki
         self._kd = kd
         self._motor = motor
+        motor.settings(max_voltage=7800)
 
     def move(self, speed: int): return lambda: self._motor.dc(speed)
     def coast(self): return lambda: self._motor.stop()
@@ -180,8 +181,8 @@ class DriveBaseAPI:
         self._tag_controller.dt = self._dt
         self._concurrent_queue: list[Task] = []
 
+        #hub.imu.settings()
         color_sensor.detectable_colors(color_params)
-        hub.imu.settings(angular_velocity_threshold=2.0, acceleration_threshold=2000)
 
     def runConcurrent(self, *series) -> None:
         self._concurrent_queue.append(Task(series))
@@ -206,7 +207,7 @@ class DriveBaseAPI:
             self._right_motor.reset_angle(target)
         return callback
 
-    def resetImu(self, target: int = 0):
+    def resetImu(self, target: float = 0):
         def callback() -> None:
             self._target_heading = target
             self._hub.imu.reset_heading(target)
@@ -292,7 +293,7 @@ class DriveBaseAPI:
         return callback
 
     def turn(
-        self, pivot: int = 0, deadzone: float = 20.0, telemetry: bool = False,
+        self, pivot: int = 0, deadzone: float = 15.0, telemetry: bool = False,
         kp: float = -1.0, ki: float = -1.0, kd: float = -1.0
     ):
         power = [0 if pivot == PIVOT_LEFT else 1, 0 if pivot == PIVOT_RIGHT else 1]
@@ -315,8 +316,8 @@ class DriveBaseAPI:
                 if telemetry: print(f"turn (angle {turn_angle}, kp: {kp}, ki: {ki}, kd: {kd})")
 
             n += self._throttle
-            rotation = compensate(self._turn_controller.calculate(self._target_heading, self._hub.imu.heading()))
-            #rotation = self._turn_controller.calculate(self._target_heading, self._hub.imu.heading())
+            #rotation = compensate(self._turn_controller.calculate(self._target_heading, self._hub.imu.heading()))
+            rotation = self._turn_controller.calculate(self._target_heading, self._hub.imu.heading())
             self._left_motor.dc(float(rotation * power[0]))
             self._right_motor.dc(float(-rotation * power[1]))
             if telemetry:
@@ -326,7 +327,7 @@ class DriveBaseAPI:
     def degree(self, target: int):
         return lambda: (abs(self._left_motor.angle()) + abs(self._right_motor.angle())) / 2 >= target
 
-    def heading(self, target: float, tolerance: float = 0.5, stable: int = 5, exit_tolerance: float = 0.1, exit: int = 5, error_tolerance: float = 2.5):
+    def heading(self, target: float, tolerance: float = 0.5, stable: int = 3, exit_tolerance: float = 0.25, exit: int = 4, error_tolerance: float = 3.5):
         n = 0
         n_exit = 0
         prev = 0
@@ -346,7 +347,7 @@ class DriveBaseAPI:
 
             prev = self._hub.imu.heading()
 
-            if n_exit >= exit: print(f"loop exit error: {abs(self._hub.imu.heading() - self._target_heading)}")
+        #if n_exit >= exit: print(f"loop exit error: {abs(self._hub.imu.heading() - self._target_heading)}")
 
             return n >= stable or n_exit >= exit
         return callback
